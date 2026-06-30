@@ -1,4 +1,5 @@
 import type {
+  ActiveScoredRound,
   AppSettings,
   LocalDataSnapshot,
   MatchHistory,
@@ -27,6 +28,7 @@ import { calculateSettlement } from '@/rules-variants/ji-an-da-suo-zi/scoring'
 const DEFAULT_USER_ID = 'default-local-user'
 const RECENT_HISTORY_LIMIT = 6
 const SYSTEM_RECHARGE_AMOUNT = 100
+const ABANDONED_ROUND_PENALTY = 4
 const WALLET_VERSION = 3
 const DEFAULT_NAMES = [
   '新居阿生',
@@ -58,6 +60,14 @@ function pickRandomItem(items: string[]): string {
  */
 function nowIsoString(): string {
   return new Date().toISOString()
+}
+
+/**
+ * 生成对局局唯一键。积分结算、未完成登记和离局扣分都复用这个键，
+ * 这样可以稳定判断一局是否已经正常结算过。
+ */
+function createRoundKey(matchId: string, roundNumber: number): string {
+  return `${matchId}:${roundNumber}`
 }
 
 /**
@@ -128,6 +138,7 @@ function createAppSettings(activeUserId: string | null): AppSettings {
     createdAt,
     updatedAt: createdAt,
     walletVersion: WALLET_VERSION,
+    activeScoredRound: null,
   }
 }
 
@@ -221,6 +232,34 @@ function createWalletMigrationLedger(userId: string, amount: number): ScoreLedge
 }
 
 /**
+ * 创建中途离局扣分流水。它是系统防刷牌分，不算玩法结算，
+ * 所以 base/reward/wonPierCount 都保持为 0。
+ */
+function createAbandonedRoundPenaltyLedger(
+  activeRound: ActiveScoredRound,
+  delta: number,
+): ScoreLedger {
+  const createdAt = nowIsoString()
+
+  return {
+    id: `${activeRound.userId}:${activeRound.roundKey}:leave-penalty`,
+    userId: activeRound.userId,
+    matchId: activeRound.matchId,
+    roundNumber: activeRound.roundNumber,
+    roundKey: `${activeRound.roundKey}:leave-penalty`,
+    seat: 0,
+    delta,
+    kind: 'leave-penalty',
+    baseDelta: 0,
+    rewardDelta: 0,
+    wonPierCount: 0,
+    isSweep: false,
+    summary: `中途离局，系统扣 ${Math.abs(delta)} 分`,
+    createdAt,
+  }
+}
+
+/**
  * 计算单个用户当前余额，旧版本缺少 kind 的流水仍然纳入余额。
  */
 function calculateUserScore(ledgers: ScoreLedger[], userId: string): number {
@@ -282,10 +321,89 @@ async function migrateWalletToOpeningBalance(
 }
 
 /**
+ * 判断一条未完成积分局是否已经通过正常结算或离局扣分处理过。
+ * 正常结算优先级最高，如果已经有对局流水，就只清登记不再扣离局分。
+ */
+function hasActiveRoundBeenRecorded(
+  ledgers: ScoreLedger[],
+  activeRound: ActiveScoredRound,
+): boolean {
+  const roundLedgerId = `${activeRound.userId}:${activeRound.roundKey}`
+  const penaltyLedgerId = `${activeRound.userId}:${activeRound.roundKey}:leave-penalty`
+
+  return ledgers.some((ledger) =>
+    ledger.id === roundLedgerId || ledger.id === penaltyLedgerId)
+}
+
+/**
+ * 清空本机设置里的未完成积分局登记。传入 settings 是为了保留其它轻量设置字段。
+ */
+async function clearActiveScoredRound(
+  database: IDBDatabase,
+  settings?: AppSettings,
+): Promise<void> {
+  if (!settings?.activeScoredRound) {
+    return
+  }
+
+  await putLocalItem(database, LOCAL_DATA_STORES.settings, {
+    ...settings,
+    activeScoredRound: null,
+    updatedAt: nowIsoString(),
+  })
+}
+
+/**
+ * 对一条未完成积分局扣系统离局分。扣分按当前余额封顶，
+ * 因此不会把本机积分扣成负数。
+ */
+async function writeAbandonedRoundPenalty(
+  database: IDBDatabase,
+  activeRound: ActiveScoredRound,
+  ledgers: ScoreLedger[],
+): Promise<void> {
+  if (hasActiveRoundBeenRecorded(ledgers, activeRound)) {
+    return
+  }
+
+  const currentScore = Math.max(0, calculateUserScore(ledgers, activeRound.userId))
+  const penaltyAmount = Math.min(ABANDONED_ROUND_PENALTY, currentScore)
+
+  if (penaltyAmount <= 0) {
+    return
+  }
+
+  await putLocalItem(
+    database,
+    LOCAL_DATA_STORES.scoreLedger,
+    createAbandonedRoundPenaltyLedger(activeRound, -penaltyAmount),
+  )
+}
+
+/**
+ * 应用上次刷新、关闭或崩溃留下的未完成积分局。这里在应用启动读快照时执行，
+ * 比 beforeunload 里直接异步写库更可靠。
+ */
+async function applyInterruptedRoundPenalty(database: IDBDatabase): Promise<void> {
+  const settings = await getLocalItem(database, LOCAL_DATA_STORES.settings, LOCAL_SETTINGS_ID)
+  const activeRound = settings?.activeScoredRound
+
+  if (!settings || !activeRound) {
+    return
+  }
+
+  const ledgers = await getAllLocalItems(database, LOCAL_DATA_STORES.scoreLedger)
+  await writeAbandonedRoundPenalty(database, activeRound, ledgers)
+  await clearActiveScoredRound(database, settings)
+}
+
+/**
  * 按积分流水计算用户统计。这样总分不会因为某次 UI 写入失败而和流水不一致。
  */
 function calculateStatsByUserId(ledgers: ScoreLedger[]): Record<string, UserStats> {
   return ledgers.reduce<Record<string, UserStats>>((statsByUserId, ledger) => {
+    const ledgerKind = ledger.kind ?? 'round'
+    const isRoundLedger = ledgerKind === 'round'
     const previousStats = statsByUserId[ledger.userId] ?? {
       totalScore: 0,
       roundsPlayed: 0,
@@ -295,12 +413,12 @@ function calculateStatsByUserId(ledgers: ScoreLedger[]): Record<string, UserStat
 
     statsByUserId[ledger.userId] = {
       totalScore: previousStats.totalScore + ledger.delta,
-      roundsPlayed: previousStats.roundsPlayed + (ledger.kind === 'recharge' ? 0 : 1),
+      roundsPlayed: previousStats.roundsPlayed + (isRoundLedger ? 1 : 0),
       bestRoundDelta:
-        ledger.kind === 'recharge'
-          ? previousStats.bestRoundDelta
-          : Math.max(previousStats.bestRoundDelta, ledger.delta),
-      sweepCount: previousStats.sweepCount + (ledger.kind !== 'recharge' && ledger.isSweep ? 1 : 0),
+        isRoundLedger
+          ? Math.max(previousStats.bestRoundDelta, ledger.delta)
+          : previousStats.bestRoundDelta,
+      sweepCount: previousStats.sweepCount + (isRoundLedger && ledger.isSweep ? 1 : 0),
     }
 
     return statsByUserId
@@ -325,7 +443,10 @@ export async function loadLocalDataSnapshot(): Promise<LocalDataSnapshot> {
     const preparedUsers = await getAllLocalItems(database, LOCAL_DATA_STORES.users)
     const preparedSettings = await getLocalItem(database, LOCAL_DATA_STORES.settings, LOCAL_SETTINGS_ID)
     await migrateWalletToOpeningBalance(database, preparedUsers, preparedSettings)
-    await ensureUsersHavePlayableScore(database, preparedUsers)
+    await applyInterruptedRoundPenalty(database)
+
+    const usersAfterPenalty = await getAllLocalItems(database, LOCAL_DATA_STORES.users)
+    await ensureUsersHavePlayableScore(database, usersAfterPenalty)
 
     const [users, settings, ledgers, histories] = await Promise.all([
       getAllLocalItems(database, LOCAL_DATA_STORES.users),
@@ -415,6 +536,99 @@ function findHumanSeat(seatConfigs: SeatConfig[]): SeatId {
 }
 
 /**
+ * 构造当前积分局登记对象。登记只描述“有一局积分局正在进行”，
+ * 不保存任何牌面，避免把系统规则和玩法细节耦合到一起。
+ */
+function createActiveScoredRound(
+  userId: string,
+  matchState: MatchState,
+  round: RoundState,
+): ActiveScoredRound {
+  const roundKey = createRoundKey(matchState.matchId, round.roundNumber)
+
+  return {
+    userId,
+    matchId: matchState.matchId,
+    roundNumber: round.roundNumber,
+    roundKey,
+    startedAt: nowIsoString(),
+  }
+}
+
+/**
+ * 登记正在进行的积分局。只要这条登记还在，刷新或非正常离开后下次加载会补扣离局分。
+ */
+export async function markActiveScoredRoundForUser(
+  userId: string,
+  matchState: MatchState,
+  round: RoundState,
+): Promise<LocalDataSnapshot> {
+  if (round.phase === 'settled') {
+    return loadLocalDataSnapshot()
+  }
+
+  const database = await openLocalDatabase()
+
+  try {
+    const settings =
+      await getLocalItem(database, LOCAL_DATA_STORES.settings, LOCAL_SETTINGS_ID) ??
+      createAppSettings(userId)
+
+    await putLocalItem(database, LOCAL_DATA_STORES.settings, {
+      ...settings,
+      activeUserId: settings.activeUserId ?? userId,
+      activeScoredRound: createActiveScoredRound(userId, matchState, round),
+      updatedAt: nowIsoString(),
+    })
+  } finally {
+    database.close()
+  }
+
+  return loadLocalDataSnapshot()
+}
+
+/**
+ * 主动中途离局时立即扣系统分，并清空未完成登记。
+ * 这条路径用于菜单“重新开始 / 回到首页”，刷新关闭则由下次加载补扣。
+ */
+export async function recordAbandonedRoundPenaltyForUser(
+  userId: string,
+  matchState: MatchState,
+  round: RoundState,
+): Promise<LocalDataSnapshot> {
+  if (round.phase !== 'playing') {
+    return loadLocalDataSnapshot()
+  }
+
+  const database = await openLocalDatabase()
+
+  try {
+    const settings =
+      await getLocalItem(database, LOCAL_DATA_STORES.settings, LOCAL_SETTINGS_ID) ??
+      createAppSettings(userId)
+    const activeRound = settings.activeScoredRound ?? createActiveScoredRound(userId, matchState, round)
+    const ledgers = await getAllLocalItems(database, LOCAL_DATA_STORES.scoreLedger)
+
+    await writeAbandonedRoundPenalty(database, activeRound, ledgers)
+    await clearActiveScoredRound(database, {
+      ...settings,
+      activeScoredRound: activeRound,
+    })
+    await ensureUsersHavePlayableScore(database, [normalizeUserProfile({
+      id: userId,
+      nickname: '',
+      createdAt: activeRound.startedAt,
+      updatedAt: activeRound.startedAt,
+      avatarKey: '',
+    })])
+  } finally {
+    database.close()
+  }
+
+  return loadLocalDataSnapshot()
+}
+
+/**
  * 读取结算明细。展示层会热更新重算结算，本地落库也重算一次，避免旧状态污染积分。
  */
 function getSettlementForRecord(round: RoundState) {
@@ -466,7 +680,7 @@ export async function recordSettledRoundForUser(
     return loadLocalDataSnapshot()
   }
 
-  const roundKey = `${matchState.matchId}:${round.roundNumber}`
+  const roundKey = createRoundKey(matchState.matchId, round.roundNumber)
   const recordId = `${userId}:${roundKey}`
   const createdAt = nowIsoString()
   const database = await openLocalDatabase()
@@ -530,6 +744,15 @@ export async function recordSettledRoundForUser(
         updatedAt: createdAt,
         avatarKey: '',
       })])
+    }
+
+    const settings = await getLocalItem(database, LOCAL_DATA_STORES.settings, LOCAL_SETTINGS_ID)
+
+    if (
+      settings?.activeScoredRound?.userId === userId &&
+      settings.activeScoredRound.roundKey === roundKey
+    ) {
+      await clearActiveScoredRound(database, settings)
     }
   } finally {
     database.close()

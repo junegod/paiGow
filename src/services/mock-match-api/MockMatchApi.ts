@@ -31,9 +31,13 @@ export class MockMatchApi {
 
   private state: MatchState
 
-  public constructor(seed = 20260628) {
-    this.rng = new SeededRandom(seed)
-    this.state = jiAnDaSuoZiRuleSet.createMatch(seed, DEFAULT_SEAT_CONFIGS)
+  private shouldUseRuntimeEntropy: boolean
+
+  public constructor(seed?: number) {
+    this.shouldUseRuntimeEntropy = seed === undefined
+    const initialSeed = seed ?? createRuntimeSeed()
+    this.rng = new SeededRandom(initialSeed)
+    this.state = jiAnDaSuoZiRuleSet.createMatch(initialSeed, DEFAULT_SEAT_CONFIGS)
   }
 
   /**
@@ -46,9 +50,11 @@ export class MockMatchApi {
   /**
    * 重建整场对局。
    */
-  public createMatch(seed = Date.now()): MatchState {
-    this.rng = new SeededRandom(seed)
-    this.state = jiAnDaSuoZiRuleSet.createMatch(seed, DEFAULT_SEAT_CONFIGS)
+  public createMatch(seed?: number): MatchState {
+    this.shouldUseRuntimeEntropy = seed === undefined
+    const nextSeed = seed ?? createRuntimeSeed()
+    this.rng = new SeededRandom(nextSeed)
+    this.state = jiAnDaSuoZiRuleSet.createMatch(nextSeed, DEFAULT_SEAT_CONFIGS)
     return this.getState()
   }
 
@@ -74,6 +80,10 @@ export class MockMatchApi {
    * 开始新一局。首页调试模式可以传入真人手牌，规则层会负责校验与随机补齐。
    */
   public startRound(options?: StartRoundOptions): MatchState {
+    if (this.shouldUseRuntimeEntropy) {
+      this.rng = new SeededRandom(createRuntimeSeed())
+    }
+
     const result = jiAnDaSuoZiRuleSet.startRound(this.state, this.rng, options)
     this.state = result.match
     return this.getState()
@@ -186,4 +196,27 @@ export class MockMatchApi {
   public getRuleSet() {
     return jiAnDaSuoZiRuleSet
   }
+}
+
+/**
+ * 生成运行期随机种子。默认游戏入口不再使用固定 seed，
+ * 避免刷新页面后第一局永远发同一副牌；测试传入显式 seed 时仍保持可复现。
+ */
+function createRuntimeSeed(): number {
+  let cryptoSeed = 0
+
+  if (globalThis.crypto?.getRandomValues) {
+    const randomValues = new Uint32Array(1)
+    globalThis.crypto.getRandomValues(randomValues)
+    cryptoSeed = randomValues[0] ?? 0
+  }
+
+  const timeSeed = Date.now() >>> 0
+  const performanceSeed =
+    typeof performance === 'undefined'
+      ? 0
+      : Math.floor(performance.now() * 1000) >>> 0
+  const mathSeed = Math.floor(Math.random() * 0xffffffff) >>> 0
+
+  return (cryptoSeed ^ timeSeed ^ performanceSeed ^ mathSeed) >>> 0
 }

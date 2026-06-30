@@ -45,6 +45,19 @@ type DrawerState =
   | { type: 'history' }
   | null
 
+type LeaveConfirmAction = 'restart-round' | 'return-home'
+
+type LeaveConfirmState = {
+  /** 用户准备执行的离局动作，用于确认后继续调度对应菜单行为。 */
+  action: LeaveConfirmAction
+  /** 弹窗主标题，明确当前不是系统浏览器提示。 */
+  title: string
+  /** 弹窗正文，说明积分局中途离开会触发防刷牌扣分。 */
+  message: string
+  /** 确认按钮文案，按具体动作展示“重新开始”或“返回首页”。 */
+  confirmLabel: string
+}
+
 type InspectableTrick = {
   trick: TrickRecord | CurrentTrickState
   isCurrent: boolean
@@ -323,9 +336,13 @@ function App() {
   const [drawerState, setDrawerState] = useState<DrawerState>(null)
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [isCurrentMatchScored, setIsCurrentMatchScored] = useState(true)
+  const [leaveConfirmState, setLeaveConfirmState] = useState<LeaveConfirmState | null>(null)
+  const [leaveConfirmError, setLeaveConfirmError] = useState<string | null>(null)
+  const [isLeavePenaltySubmitting, setIsLeavePenaltySubmitting] = useState(false)
   const [lastVisibleDiceRoll, setLastVisibleDiceRoll] = useState<DiceRoll | null>(null)
   const previousAudioSnapshotRef = useRef<RoundAudioSnapshot | null>(null)
   const recordedLocalRoundKeyRef = useRef<string | null>(null)
+  const activeScoredRoundKeyRef = useRef<string | null>(null)
 
   const cardDefinitionMap = useMemo(
     () => createCardDefinitionMap(controller.ruleSet.getAllCardDefinitions()),
@@ -377,6 +394,13 @@ function App() {
   const activeDiceResultLabel = activeDiceRoll
     ? `${activeDiceRoll.first}+${activeDiceRoll.second} ${formatDoorName(activeDiceRoll.door)}`
     : null
+  const activeScoredRoundKey =
+    isCurrentMatchScored &&
+    activeLocalUserId &&
+    currentRound?.phase === 'playing'
+      ? `${activeLocalUserId}:${controller.matchState.matchId}:${currentRound.roundNumber}`
+      : null
+  const shouldWarnBeforeLeavingScoredRound = Boolean(activeScoredRoundKey)
 
   const recordSettledRoundLocally = useEffectEvent((round: RoundState, matchState: MatchState) =>
     localPlayerData.recordSettledRound(matchState, round),
@@ -391,6 +415,45 @@ function App() {
       setLastVisibleDiceRoll(fallbackDiceRoll)
     }
   }, [fallbackDiceRoll])
+
+  /**
+   * 积分局一开始就登记为“未完成”。如果用户刷新、关闭或崩溃，
+   * 下次加载本地数据时会根据这条登记补扣中途离局分。
+   */
+  useEffect(() => {
+    if (!activeScoredRoundKey || !currentRound) {
+      return
+    }
+
+    if (activeScoredRoundKeyRef.current === activeScoredRoundKey) {
+      return
+    }
+
+    activeScoredRoundKeyRef.current = activeScoredRoundKey
+    void localPlayerData.markActiveScoredRound(controller.matchState, currentRound)
+  }, [activeScoredRoundKey, controller.matchState, currentRound, localPlayerData])
+
+  /**
+   * 刷新浏览器、关闭标签页或跳转离开时显示二次确认。
+   * 浏览器不会允许自定义文案，但 preventDefault/returnValue 能触发原生确认框。
+   */
+  useEffect(() => {
+    if (!shouldWarnBeforeLeavingScoredRound) {
+      return
+    }
+
+    function handleBeforeUnload(event: BeforeUnloadEvent): string {
+      event.preventDefault()
+      event.returnValue = '当前积分局未完成，离开会扣 4 分。'
+      return event.returnValue
+    }
+
+    window.addEventListener('beforeunload', handleBeforeUnload)
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload)
+    }
+  }, [shouldWarnBeforeLeavingScoredRound])
 
   /**
    * 浏览器移动端需要用户手势后才能播放声音；这里在首次点击或触摸时解锁，
@@ -623,20 +686,105 @@ function App() {
   }, [cardDefinitionMap, controller.matchState.seatConfigs, currentRound, drawerState])
 
   /**
-   * 从牌桌菜单重新开始当前对局，关闭下拉后直接发起新一局。
+   * 判断菜单离开是否要走内部确认。只有正在进行的普通积分局才扣系统防刷牌分，
+   * 定制牌局、结算页和未加载本地用户时都直接执行原菜单动作。
    */
-  function startRoundFromMenu(): void {
-    setIsMenuOpen(false)
-    controller.startRound()
+  function shouldConfirmMenuLeave(): boolean {
+    return isCurrentMatchScored && currentRound?.phase === 'playing' && Boolean(activeLocalUserId)
   }
 
   /**
-   * 从牌桌菜单回到首页，丢弃当前局并回到首页选牌入口。
+   * 真正执行菜单动作。这里不负责扣分，只做牌桌状态切换，
+   * 这样确认弹窗、免确认场景和后续扩展动作都能复用。
    */
-  function restartMatchFromMenu(): void {
+  function executeMenuLeaveAction(action: LeaveConfirmAction): void {
     setIsMenuOpen(false)
     setIsCurrentMatchScored(true)
+
+    if (action === 'restart-round') {
+      controller.startRound()
+      return
+    }
+
     controller.restartMatch()
+  }
+
+  /**
+   * 构造内部确认弹窗的展示内容。文案放在这里集中管理，
+   * 避免菜单按钮和弹窗 JSX 各自拼字符串导致以后不好改。
+   */
+  function createLeaveConfirmState(action: LeaveConfirmAction): LeaveConfirmState {
+    if (action === 'restart-round') {
+      return {
+        action,
+        title: '中途重新开始？',
+        message: '当前积分局还没打完，重新开始会扣 4 分，防止反复刷好牌。余额不足 4 分时只扣剩余积分。',
+        confirmLabel: '扣 4 分并重新开始',
+      }
+    }
+
+    return {
+      action,
+      title: '中途返回首页？',
+      message: '当前积分局还没打完，返回首页会扣 4 分，防止反复刷好牌。余额不足 4 分时只扣剩余积分。',
+      confirmLabel: '扣 4 分并返回首页',
+    }
+  }
+
+  /**
+   * 牌桌菜单动作入口。需要扣分时先打开游戏内弹窗，不再使用浏览器系统 confirm。
+   */
+  function requestMenuLeave(action: LeaveConfirmAction): void {
+    if (!shouldConfirmMenuLeave()) {
+      executeMenuLeaveAction(action)
+      return
+    }
+
+    setIsMenuOpen(false)
+    setLeaveConfirmError(null)
+    setLeaveConfirmState(createLeaveConfirmState(action))
+  }
+
+  /**
+   * 用户在内部弹窗中确认离局后，先写入离局扣分流水，再执行对应菜单动作。
+   * 如果本地写入失败，留在当前牌桌并显示错误，避免未扣分就重新开局。
+   */
+  async function confirmMenuLeaveWithPenalty(): Promise<void> {
+    if (!leaveConfirmState || isLeavePenaltySubmitting) {
+      return
+    }
+
+    if (!currentRound || currentRound.phase !== 'playing') {
+      executeMenuLeaveAction(leaveConfirmState.action)
+      setLeaveConfirmState(null)
+      return
+    }
+
+    setIsLeavePenaltySubmitting(true)
+    setLeaveConfirmError(null)
+
+    try {
+      await localPlayerData.recordAbandonedRoundPenalty(controller.matchState, currentRound)
+      activeScoredRoundKeyRef.current = null
+      executeMenuLeaveAction(leaveConfirmState.action)
+      setLeaveConfirmState(null)
+    } catch {
+      setLeaveConfirmError('本地扣分记录失败，先别离开。请再点一次，或者刷新后系统会自动补扣。')
+    } finally {
+      setIsLeavePenaltySubmitting(false)
+    }
+  }
+
+  /**
+   * 取消内部离局弹窗只回到牌桌，不扣分、不重开、不回首页。
+   */
+  function cancelMenuLeave(): void {
+    if (isLeavePenaltySubmitting) {
+      return
+    }
+
+    setLeaveConfirmState(null)
+    setLeaveConfirmError(null)
   }
 
   /**
@@ -740,11 +888,23 @@ function App() {
               onClick={() => setIsMenuOpen(false)}
             />
             <div className="table-menu-dropdown" role="menu" aria-label="牌桌菜单">
-              <button type="button" role="menuitem" onClick={startRoundFromMenu}>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  requestMenuLeave('restart-round')
+                }}
+              >
                 重新开始
               </button>
-              <button type="button" role="menuitem" onClick={restartMatchFromMenu}>
-                回到首页
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  requestMenuLeave('return-home')
+                }}
+              >
+                返回首页
               </button>
             </div>
           </>
@@ -828,6 +988,52 @@ function App() {
             cardDefinitions={cardDefinitionMap}
             onDone={controller.finishOpeningCeremony}
           />
+        ) : null}
+
+        {leaveConfirmState ? (
+          <div
+            className="leave-confirm"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="leave-confirm-title"
+            aria-describedby="leave-confirm-desc"
+          >
+            <button
+              type="button"
+              className="leave-confirm__backdrop"
+              aria-label="继续牌桌"
+              onClick={cancelMenuLeave}
+              disabled={isLeavePenaltySubmitting}
+            />
+            <section className="leave-confirm__panel">
+              <p className="leave-confirm__eyebrow">积分局保护</p>
+              <h2 id="leave-confirm-title">{leaveConfirmState.title}</h2>
+              <p id="leave-confirm-desc">{leaveConfirmState.message}</p>
+              {leaveConfirmError ? (
+                <p className="leave-confirm__error">{leaveConfirmError}</p>
+              ) : null}
+              <div className="leave-confirm__actions">
+                <button
+                  type="button"
+                  className="hero-button hero-button--ghost"
+                  onClick={cancelMenuLeave}
+                  disabled={isLeavePenaltySubmitting}
+                >
+                  继续牌桌
+                </button>
+                <button
+                  type="button"
+                  className="hero-button hero-button--primary leave-confirm__danger"
+                  onClick={() => {
+                    void confirmMenuLeaveWithPenalty()
+                  }}
+                  disabled={isLeavePenaltySubmitting}
+                >
+                  {isLeavePenaltySubmitting ? '扣分中...' : leaveConfirmState.confirmLabel}
+                </button>
+              </div>
+            </section>
+          </div>
         ) : null}
       </section>
 

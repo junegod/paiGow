@@ -204,7 +204,7 @@ export function useGameController() {
       return
     }
 
-    apiRef.current = new MockMatchApi(Date.now())
+    apiRef.current = new MockMatchApi()
     syncState(apiRef.current.getState())
   }, [])
 
@@ -497,7 +497,7 @@ export function useGameController() {
       diceReviewTimerRef.current = null
     }
     setOpeningCeremony(null)
-    syncState(apiRef.current.createMatch(Date.now()))
+    syncState(apiRef.current.createMatch())
   }
 
   /**

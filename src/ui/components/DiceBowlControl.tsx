@@ -76,8 +76,10 @@ export function DiceBowlControl({
   const dragSessionRef = useRef<BowlDragSession | null>(null)
   const cleanupDragListenersRef = useRef<() => void>(() => {})
   const suppressNextClickRef = useRef(false)
+  const previousRollingRef = useRef(rolling)
   const [bowlPosition, setBowlPosition] = useState<BowlPosition | null>(null)
   const [isDragging, setIsDragging] = useState(false)
+  const [isDockReturnAnimating, setIsDockReturnAnimating] = useState(false)
   const canRoll = Boolean(rollAction) && !rolling
   const label = !rolling && canRoll
     ? '点碗掷骰'
@@ -195,6 +197,33 @@ export function DiceBowlControl({
     }
   }, [])
 
+  /**
+   * 骰碗从桌面中央收回右上角时，尺寸要先回到小碗，
+   * 否则 CSS 会把“大碗尺寸”和“右上角位置”混在同一帧里，看起来像突然放大后再缩小。
+   */
+  useEffect(() => {
+    const wasRolling = previousRollingRef.current
+    previousRollingRef.current = rolling
+
+    if (rolling) {
+      setIsDockReturnAnimating(false)
+      return
+    }
+
+    if (!wasRolling) {
+      return
+    }
+
+    setIsDockReturnAnimating(true)
+    const timeoutId = window.setTimeout(() => {
+      setIsDockReturnAnimating(false)
+    }, 460)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+    }
+  }, [rolling])
+
   return (
     <button
       ref={buttonRef}
@@ -202,6 +231,7 @@ export function DiceBowlControl({
       className={[
         'dice-bowl-control',
         rolling ? 'dice-bowl-control--rolling' : '',
+        isDockReturnAnimating ? 'dice-bowl-control--returning' : '',
         canRoll ? 'dice-bowl-control--ready' : '',
         roll ? 'dice-bowl-control--has-result' : '',
         isDragging ? 'dice-bowl-control--dragging' : '',
@@ -224,7 +254,7 @@ export function DiceBowlControl({
       }}
     >
       <DiceDisplay roll={roll} animate={rolling} bowl compact={!rolling} hideDice={!roll} />
-      {label ? <span className="dice-bowl-control__label">{label}</span> : null}
+      {label && !isDockReturnAnimating ? <span className="dice-bowl-control__label">{label}</span> : null}
     </button>
   )
 }

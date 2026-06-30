@@ -22,8 +22,8 @@ const HOME_FEATURED_CARD_DEFINITION_IDS = [
   'long_tian',
   'yao_fu',
   'point_nine',
-  'yao_si_liu',
-  'long_ren',
+  'point_six',
+  'point_three',
 ]
 
 interface LobbyPanelProps {

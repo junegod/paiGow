@@ -1,6 +1,23 @@
 import type { SeatId } from '@/rules-core/types'
 
 /**
+ * 本机积分局的未完成登记。它属于系统防刷牌机制，
+ * 不参与任何玩法规则，只用于刷新、关闭或中途返回时补扣离局分。
+ */
+export interface ActiveScoredRound {
+  /** 归属用户 ID，避免切换用户后误扣到别人账上。 */
+  userId: string
+  /** 当前 mock 对局 ID。 */
+  matchId: string
+  /** 当前局号。 */
+  roundNumber: number
+  /** 去重用的局唯一键。 */
+  roundKey: string
+  /** 开始时间，用于后续展示离局记录或排查本地数据。 */
+  startedAt: string
+}
+
+/**
  * 本机用户档案。首版只保留昵称与创建时间，后续接服务器时可以补头像、绑定设备等字段。
  */
 export interface UserProfile {
@@ -34,8 +51,8 @@ export interface ScoreLedger {
   seat: SeatId
   /** 本局总积分变化，正数为进分，负数为出分。 */
   delta: number
-  /** 流水类型：对局积分或系统充值。 */
-  kind: 'round' | 'recharge'
+  /** 流水类型：对局积分、系统充值或中途离局扣分。 */
+  kind: 'round' | 'recharge' | 'leave-penalty'
   /** 基础分变化。 */
   baseDelta: number
   /** 赏钱变化。 */
@@ -110,6 +127,8 @@ export interface AppSettings {
   updatedAt: string
   /** 钱包规则版本，用于旧本地数据一次性补齐默认 100 积分。 */
   walletVersion: number
+  /** 当前未完成的积分局，正常结算后会清空。 */
+  activeScoredRound?: ActiveScoredRound | null
 }
 
 /**

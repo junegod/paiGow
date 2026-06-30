@@ -64,7 +64,7 @@ const DICE_TO_DOOR: Record<string, 'long' | 'yao' | 'point'> = {
  * 规则实现版本号。开发期热更新后若旧 mock 实例仍在浏览器内存中，
  * UI 会用该版本号丢弃旧局，避免旧规则继续自动走牌。
  */
-export const RULE_ENGINE_REVISION = '2026-06-29-fixed-player-view-v1'
+export const RULE_ENGINE_REVISION = '2026-06-30-random-runtime-seed-v1'
 
 const CARDS_PER_SEAT = 8
 
