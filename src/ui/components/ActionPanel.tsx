@@ -8,8 +8,11 @@ interface ActionPanelProps {
   selectedCardIds: string[]
   handCards: CardInstance[]
   hint: string
+  /** 当前局数，展示在底部提示条最右侧，避免占用牌桌顶部空间。 */
+  roundNumber?: number
   preparedActions: PreparedAction[]
   canInteract: boolean
+  useBowlForRoll?: boolean
   onCardToggle: (cardId: string) => void
   onHandReorder: (cardIds: string[]) => void
   onActionSubmit: (action: PreparedAction) => void
@@ -61,7 +64,10 @@ function createResponseActionButton(action: PreparedAction): VisibleActionButton
 /**
  * 将规则层可能返回的多个动作压缩成桌面上的文字按钮。
  */
-function createVisibleActionButtons(actions: PreparedAction[]): VisibleActionButton[] {
+function createVisibleActionButtons(
+  actions: PreparedAction[],
+  useBowlForRoll: boolean,
+): VisibleActionButton[] {
   const rewardActions = actions.filter(isRewardAction).sort((leftAction, rightAction) =>
     getRewardActionOrder(leftAction) - getRewardActionOrder(rightAction),
   )
@@ -102,7 +108,9 @@ function createVisibleActionButtons(actions: PreparedAction[]): VisibleActionBut
 
   const rollAction = actions.find((action) => action.intent === 'roll-dice')
 
-  return rollAction ? [{ action: rollAction, label: '掷骰', role: 'normal' }] : []
+  return rollAction && !useBowlForRoll
+    ? [{ action: rollAction, label: '掷骰', role: 'normal' }]
+    : []
 }
 
 /**
@@ -115,18 +123,26 @@ export function ActionPanel({
   selectedCardIds,
   handCards,
   hint,
+  roundNumber,
   preparedActions,
   canInteract,
+  useBowlForRoll = false,
   onCardToggle,
   onHandReorder,
   onActionSubmit,
 }: ActionPanelProps) {
-  const visibleActionButtons = createVisibleActionButtons(preparedActions)
+  const visibleActionButtons = createVisibleActionButtons(preparedActions, useBowlForRoll)
+  const roundBadge = roundNumber ? (
+    <span className="action-panel__round">第{roundNumber}局</span>
+  ) : null
 
   if (!seatState) {
     return (
       <section className="action-panel">
-        <p className="action-panel__hint action-panel__hint--waiting">{hint}</p>
+        <div className="action-panel__header action-panel__header--waiting">
+          <p className="action-panel__hint action-panel__hint--waiting">{hint}</p>
+          {roundBadge}
+        </div>
       </section>
     )
   }
@@ -138,6 +154,7 @@ export function ActionPanel({
           <p className="action-panel__seat">{seatState.config.name}</p>
           <p className="action-panel__hint">{hint}</p>
         </div>
+        {roundBadge}
       </div>
 
       <CardStrip

@@ -22,7 +22,7 @@ export function SeatPanel({
   score,
   onInspectWonTricks,
 }: SeatPanelProps) {
-  const scoreText = score > 0 ? `积分 +${score}` : `积分 ${score}`
+  const scoreText = `积分 ${score}`
 
   return (
     <section

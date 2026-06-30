@@ -369,7 +369,7 @@ export interface BotStrategy {
 }
 
 /**
- * RuleSet 是未来挂载不同牌九玩法的统一扩展点。
+ * RuleSet 是未来挂载不同骨牌玩法的统一扩展点。
  */
 export interface RuleSet {
   id: string

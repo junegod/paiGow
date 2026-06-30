@@ -8,10 +8,10 @@ interface SettlementPanelProps {
   seatConfigs: SeatConfig[]
   /** 打开整局回合记录，方便结算后复盘每次出牌。 */
   onInspectHistory: () => void
-  /** 进入下一局，沿用当前座位配置。 */
-  onNextRound: () => void
-  /** 重置整场并重新洗牌。 */
-  onRestartMatch: () => void
+  /** 进入下一局，沿用当前座位配置；允许上层先异步落账。 */
+  onNextRound: () => void | Promise<void>
+  /** 返回首页并重置整场；允许上层先异步落账。 */
+  onRestartMatch: () => void | Promise<void>
 }
 
 function getSeatName(seatConfigs: SeatConfig[], seat: number): string {
@@ -115,10 +115,22 @@ export function SettlementPanel({
         <button type="button" className="hero-button hero-button--ghost" onClick={onInspectHistory}>
           回合记录
         </button>
-        <button type="button" className="hero-button hero-button--ghost" onClick={onRestartMatch}>
-          重新洗牌
+        <button
+          type="button"
+          className="hero-button hero-button--ghost"
+          onClick={() => {
+            void onRestartMatch()
+          }}
+        >
+          返回首页
         </button>
-        <button type="button" className="hero-button hero-button--primary" onClick={onNextRound}>
+        <button
+          type="button"
+          className="hero-button hero-button--primary"
+          onClick={() => {
+            void onNextRound()
+          }}
+        >
           下一局
         </button>
       </div>

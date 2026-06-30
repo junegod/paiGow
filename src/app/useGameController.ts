@@ -15,6 +15,7 @@ import type {
   CardInstance,
   MatchState,
   PreparedAction,
+  RoundState,
   SeatConfig,
   SeatId,
   SeatState,
@@ -23,6 +24,15 @@ import type {
 } from '@/rules-core/types'
 
 const COMPLETED_TRICK_REVIEW_MS = 2000
+
+interface OpeningCeremonyState {
+  /** 当前仪式对应的局号，用来让动画组件在每一局重新播放。 */
+  roundNumber: number
+  /** 庄家就是本局先抓牌的人，也就是规则层的 firstLeader。 */
+  dealerSeat: SeatId
+  /** 动画使用的规则快照，避免播放过程中 React 状态变化导致仪式画面跳动。 */
+  round: RoundState
+}
 
 /**
  * 判断两个字符串数组是否完全一致，用于避免拖拽排序时产生无意义重渲染。
@@ -90,6 +100,7 @@ export function useGameController() {
   const [handOrderBySeat, setHandOrderBySeat] = useState<Partial<Record<SeatId, string[]>>>({})
   const [reviewTrick, setReviewTrick] = useState<TrickRecord | null>(null)
   const [diceReviewKey, setDiceReviewKey] = useState<string | null>(null)
+  const [openingCeremony, setOpeningCeremony] = useState<OpeningCeremonyState | null>(null)
   const reviewTimerRef = useRef<number | null>(null)
   const diceReviewTimerRef = useRef<number | null>(null)
   const lastReviewTrickKeyRef = useRef<string | null>(null)
@@ -186,7 +197,7 @@ export function useGameController() {
 
   /**
    * 开发期 Vite 热更新会保留 React hook 状态，导致旧 MockMatchApi 实例继续按旧规则走牌。
-   * 规则版本变化时直接重建 mock 服务并回到大厅，确保浏览器里的自动机器人使用最新规则。
+   * 规则版本变化时直接重建 mock 服务并回到首页，确保浏览器里的自动机器人使用最新规则。
    */
   useEffect(() => {
     if (apiRef.current.rulesRevision === RULE_ENGINE_REVISION) {
@@ -202,7 +213,7 @@ export function useGameController() {
       return
     }
 
-    if (isTrickReviewing || isDiceReviewing) {
+    if (openingCeremony || isTrickReviewing || isDiceReviewing) {
       return
     }
 
@@ -225,6 +236,7 @@ export function useGameController() {
     currentSeatState,
     isDiceReviewing,
     isTrickReviewing,
+    openingCeremony,
   ])
 
   useEffect(() => {
@@ -390,7 +402,7 @@ export function useGameController() {
    * 只允许当前真人座位切换选牌；机器人行动时手牌可看但不能误操作。
    */
   function toggleCardSelection(cardId: string): void {
-    if (!currentRound || currentSeat === null || !currentSeatState || isDiceReviewing) {
+    if (!currentRound || currentSeat === null || !currentSeatState || openingCeremony || isDiceReviewing) {
       return
     }
 
@@ -432,7 +444,7 @@ export function useGameController() {
    * 提交当前预备动作。
    */
   function submitPreparedAction(action: PreparedAction): void {
-    if (currentSeat === null || isDiceReviewing) {
+    if (currentSeat === null || openingCeremony || isDiceReviewing) {
       return
     }
 
@@ -457,7 +469,19 @@ export function useGameController() {
       window.clearTimeout(diceReviewTimerRef.current)
       diceReviewTimerRef.current = null
     }
-    runApiAction(() => apiRef.current.startRound(options))
+    const nextState = apiRef.current.startRound(options)
+    const nextRound = nextState.currentRound
+
+    setOpeningCeremony(
+      nextRound
+        ? {
+            roundNumber: nextRound.roundNumber,
+            dealerSeat: nextRound.firstLeader,
+            round: structuredClone(nextRound),
+          }
+        : null,
+    )
+    syncState(nextState)
   }
 
   /**
@@ -472,7 +496,15 @@ export function useGameController() {
       window.clearTimeout(diceReviewTimerRef.current)
       diceReviewTimerRef.current = null
     }
+    setOpeningCeremony(null)
     syncState(apiRef.current.createMatch(Date.now()))
+  }
+
+  /**
+   * 开局仪式结束后放开真实牌局。机器人自动行动会在这个状态清空后继续。
+   */
+  function finishOpeningCeremony(): void {
+    setOpeningCeremony(null)
   }
 
   /**
@@ -488,6 +520,8 @@ export function useGameController() {
     visibleActionSeatState,
     visibleActionHandCards,
     reviewTrick,
+    openingCeremony,
+    isOpeningCeremonyActive: Boolean(openingCeremony),
     isTrickReviewing,
     isDiceReviewing,
     selectionPreview,
@@ -500,6 +534,7 @@ export function useGameController() {
     submitPreparedAction,
     startRound,
     restartMatch,
+    finishOpeningCeremony,
   }
 
   return controller

@@ -30,7 +30,7 @@ function mark(x: number, y: number, color: PipColor, radius = 10.4): PipMark {
 }
 
 /**
- * 取某个半区的三行纵向坐标，方便把传统牌九的几点牌转换成孔位。
+ * 取某个半区的三行纵向坐标，方便把传统骨牌的几点牌转换成孔位。
  */
 function rows(position: HalfPosition): [number, number, number] {
   return HALF_ROWS[position]

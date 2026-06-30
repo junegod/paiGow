@@ -1,5 +1,5 @@
 {
-  "name": "paigow",
+  "name": "da-suo-zi",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -13,9 +13,12 @@
   },
   "dependencies": {
     "@fontsource-variable/manrope": "^5.2.8",
+    "@react-three/drei": "^10.7.7",
+    "@react-three/fiber": "^9.6.1",
     "framer-motion": "^12.42.0",
     "react": "^19.2.7",
-    "react-dom": "^19.2.7"
+    "react-dom": "^19.2.7",
+    "three": "^0.185.0"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.9.1",
@@ -24,6 +27,7 @@
     "@types/node": "^24.13.2",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
+    "@types/three": "^0.185.0",
     "@vitejs/plugin-react": "^6.0.2",
     "jsdom": "^29.1.1",
     "oxlint": "^1.69.0",

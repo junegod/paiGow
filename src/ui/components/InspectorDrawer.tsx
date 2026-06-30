@@ -11,7 +11,7 @@ interface InspectorDrawerProps {
 
 /**
  * 居中弹窗统一承载回合详情、赢墩堆详情与复盘内容。
- * 参考传统牌九广告截图的紫底金框样式，避免移动端底部抽屉遮住手牌。
+ * 参考传统骨牌广告截图的紫底金框样式，避免移动端底部抽屉遮住手牌。
  */
 export function InspectorDrawer({
   open,

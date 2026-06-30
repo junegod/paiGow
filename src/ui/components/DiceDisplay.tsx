@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 
 import type { DiceRoll } from '@/rules-core/types'
 import { DICE_ROLL_ANIMATION_MS } from '@/ui/diceTiming'
@@ -7,6 +7,26 @@ interface DiceDisplayProps {
   roll: DiceRoll | null
   animate?: boolean
   compact?: boolean
+  bowl?: boolean
+  hideDice?: boolean
+}
+
+let webGLSupportCache: boolean | null = null
+
+const dice3DDisplayModulePromise = import('@/ui/components/Dice3DDisplay')
+
+const LazyDice3DDisplay = lazy(() =>
+  dice3DDisplayModulePromise.then((module) => ({
+    default: module.Dice3DDisplay,
+  })),
+)
+
+const EMPTY_BOWL_ROLL: DiceRoll = {
+  first: 1,
+  second: 1,
+  sum: 2,
+  key: 'empty-bowl-placeholder',
+  door: 'long',
 }
 
 const PIP_POSITIONS: Record<number, number[]> = {
@@ -35,7 +55,34 @@ function getDicePipTone(value: number): 'red' | 'blue' {
 }
 
 /**
- * 单颗 3D 骰子。通过 CSS 透视、侧边阴影和凹点高光模拟参考截图里的白色圆角骰子。
+ * 检测当前浏览器是否能创建 WebGL 上下文。部分安卓 WebView 或省电模式下
+ * 可能禁用 WebGL，此时继续使用 CSS 骰子兜底，保证游戏可玩。
+ */
+function isWebGLRenderingAvailable(): boolean {
+  if (webGLSupportCache !== null) {
+    return webGLSupportCache
+  }
+
+  if (typeof document === 'undefined') {
+    webGLSupportCache = false
+    return webGLSupportCache
+  }
+
+  try {
+    const canvas = document.createElement('canvas')
+    webGLSupportCache = Boolean(
+      canvas.getContext('webgl') ?? canvas.getContext('experimental-webgl'),
+    )
+  } catch {
+    webGLSupportCache = false
+  }
+
+  return webGLSupportCache
+}
+
+/**
+ * 单颗 CSS 兜底骰子。主流程优先使用 R3F，只有 WebGL 不可用或 3D chunk
+ * 还没加载完成时才会显示这个轻量版本。
  */
 function DiceCube({ value }: { value: number }) {
   const activePositions = new Set(getPipPositions(value))
@@ -43,6 +90,8 @@ function DiceCube({ value }: { value: number }) {
 
   return (
     <div className="dice-cube" aria-label={`${value} 点`}>
+      <span className="dice-cube__side dice-cube__side--right" aria-hidden="true" />
+      <span className="dice-cube__side dice-cube__side--bottom" aria-hidden="true" />
       <div className="dice-cube__face">
         {Array.from({ length: 9 }, (_, index) => (
           <span
@@ -62,15 +111,78 @@ function DiceCube({ value }: { value: number }) {
 }
 
 /**
+ * CSS 兜底骰子。WebGL 不可用或 3D chunk 首次加载时使用，
+ * 保证页面不会因为 3D 初始化失败而空白。
+ */
+function CssDiceDisplay({
+  displayValues,
+  compact,
+  isRolling,
+}: {
+  displayValues: [number, number]
+  compact: boolean
+  isRolling: boolean
+}) {
+  return (
+    <div
+      className={[
+        'dice-display',
+        compact ? 'dice-display--compact' : '',
+        isRolling ? 'dice-display--rolling' : '',
+      ]
+        .filter(Boolean)
+        .join(' ')}
+    >
+      <DiceCube value={displayValues[0]} />
+      <DiceCube value={displayValues[1]} />
+    </div>
+  )
+}
+
+/**
+ * 开局碗内掷骰的 CSS 兜底。3D chunk 首次加载如果慢半拍，
+ * 至少先显示一个轻量小碗，避免开局动画突然空白。
+ */
+function BowlCssFallback({
+  displayValues,
+  isRolling,
+  hideDice,
+}: {
+  displayValues: [number, number]
+  isRolling: boolean
+  hideDice: boolean
+}) {
+  return (
+    <div
+      className={[
+        'dice-display-bowl-fallback',
+        hideDice ? 'dice-display-bowl-fallback--empty' : '',
+      ]
+        .filter(Boolean)
+        .join(' ')}
+    >
+      {hideDice ? null : (
+        <CssDiceDisplay displayValues={displayValues} compact={false} isRolling={isRolling} />
+      )}
+    </div>
+  )
+}
+
+/**
  * 掷骰展示组件：中心态会先随机跳动，结束后落到规则引擎给出的最终点数。
+ * 当作为碗入口且尚未掷骰时，可以只展示空碗，避免误导玩家已有点数。
  */
 export function DiceDisplay({
   roll,
   animate = false,
   compact = false,
+  bowl = false,
+  hideDice = false,
 }: DiceDisplayProps) {
   const [displayValues, setDisplayValues] = useState<[number, number]>([1, 1])
   const [isRolling, setIsRolling] = useState(false)
+  const shouldUse3D = isWebGLRenderingAvailable()
+  const displayRoll = roll ?? EMPTY_BOWL_ROLL
 
   useEffect(() => {
     if (!roll) {
@@ -78,7 +190,7 @@ export function DiceDisplay({
       return
     }
 
-    if (!animate) {
+    if (shouldUse3D || !animate) {
       setDisplayValues([roll.first, roll.second])
       setIsRolling(false)
       return
@@ -101,24 +213,63 @@ export function DiceDisplay({
       window.clearInterval(intervalId)
       window.clearTimeout(timeoutId)
     }
-  }, [animate, roll])
+  }, [animate, roll, shouldUse3D])
 
-  if (!roll) {
+  if (!roll && !(bowl && hideDice)) {
     return null
   }
 
-  return (
-    <div
-      className={[
-        'dice-display',
-        compact ? 'dice-display--compact' : '',
-        isRolling ? 'dice-display--rolling' : '',
-      ]
-        .filter(Boolean)
-        .join(' ')}
-    >
-      <DiceCube value={displayValues[0]} />
-      <DiceCube value={displayValues[1]} />
-    </div>
-  )
+  if (shouldUse3D) {
+    return (
+      <Suspense
+        fallback={
+          bowl ? (
+            <BowlCssFallback
+              displayValues={displayValues}
+              isRolling={animate || isRolling}
+              hideDice={hideDice && !roll}
+            />
+          ) : (
+            <CssDiceDisplay
+              displayValues={displayValues}
+              compact={compact}
+              isRolling={animate || isRolling}
+            />
+          )
+        }
+      >
+        <div
+          className={[
+            'dice-display',
+            'dice-display--r3f',
+            compact ? 'dice-display--compact' : '',
+            bowl ? 'dice-display--bowl' : '',
+            animate ? 'dice-display--rolling' : '',
+          ]
+            .filter(Boolean)
+            .join(' ')}
+        >
+          <LazyDice3DDisplay
+            roll={displayRoll}
+            animate={animate}
+            compact={compact}
+            bowl={bowl}
+            hideDice={hideDice && !roll}
+          />
+        </div>
+      </Suspense>
+    )
+  }
+
+  if (bowl) {
+    return (
+      <BowlCssFallback
+        displayValues={displayValues}
+        isRolling={isRolling}
+        hideDice={hideDice && !roll}
+      />
+    )
+  }
+
+  return <CssDiceDisplay displayValues={displayValues} compact={compact} isRolling={isRolling} />
 }

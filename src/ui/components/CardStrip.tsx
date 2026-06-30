@@ -6,6 +6,7 @@ import {
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from 'react'
+import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
 
 import type { CardDefinition, CardInstance } from '@/rules-core/types'
@@ -364,23 +365,29 @@ export function CardStrip({
             </motion.div>
           )
         })}
-        {dragPreview && previewCard ? (
-          <div
-            className="card-strip__drag-preview"
-            style={{
-              left: dragPreview.left,
-              top: dragPreview.top,
-              width: dragPreview.width,
-              height: dragPreview.height,
-            }}
-          >
-            {renderCard(
-              previewCard,
-              false,
-              cards.findIndex((card) => card.id === previewCard.id),
-            )}
-          </div>
-        ) : null}
+        {dragPreview && previewCard && typeof document !== 'undefined'
+          ? createPortal(
+            /**
+             * 拖动预览放到 body 顶层，避免被牌桌容器的 overflow、transform 或 z-index 裁掉。
+             */
+            <div
+              className="card-strip__drag-preview"
+              style={{
+                left: dragPreview.left,
+                top: dragPreview.top,
+                width: dragPreview.width,
+                height: dragPreview.height,
+              }}
+            >
+              {renderCard(
+                previewCard,
+                false,
+                cards.findIndex((card) => card.id === previewCard.id),
+              )}
+            </div>,
+            document.body,
+          )
+          : null}
       </div>
     )
   }
