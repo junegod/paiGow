@@ -12,6 +12,10 @@ import {
   GROUP_MAX_STRENGTH,
   isEndgame,
 } from '@/rules-variants/ji-an-da-suo-zi/botStrategyAnalysis'
+import {
+  estimateDeadRewardLeadScore,
+  estimateLiveRewardLeadScore,
+} from '@/rules-variants/ji-an-da-suo-zi/botRewardEvaluation'
 
 /**
  * 后手响应评分：最后一墩能吃一定优先；早期只为 1 墩要慎用脑子和强对子。
@@ -91,11 +95,11 @@ function scoreLeadAction(
       : 0
   const endgameControlBonus = isEndgame(context, shape.cardCount) ? security * 54 : 0
   const rewardBonus =
-    shape.kind === 'reward-dead'
-      ? 42
-      : shape.kind === 'reward-live'
-      ? 18
-      : 0
+    shape.kind === 'reward-live'
+      ? estimateLiveRewardLeadScore(context, shape)
+      : shape.kind === 'reward-dead'
+        ? estimateDeadRewardLeadScore(context, shape)
+        : 0
   const comboBonus = shape.kind === 'long-combo' ? shape.cardCount * 16 + shape.strength * 8 : 0
   const pairBonus = shape.kind === 'pair' ? shape.cardCount * 12 + shape.strength * 5 : 0
   const safeSinglesBonus = shape.kind === 'safe-singles' ? shape.cardCount * 28 : 0

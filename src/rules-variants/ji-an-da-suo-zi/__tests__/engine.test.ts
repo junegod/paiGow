@@ -532,6 +532,66 @@ describe('吉安打索子规则引擎', () => {
     expect(botAction.intent).not.toBe('roll-dice')
   })
 
+  it('机器人最后两张赏会优先打活赏争取翻倍赏钱', () => {
+    const round = markAfterOpeningLead(
+      createRound({ 0: REWARD_DEFINITION_IDS }, 0),
+    )
+    round.seats[0].config.mode = 'bot'
+    round.seats[0].wonPierCount = 5
+    const legalActions = listTurnActions(round, 0)
+
+    expect(legalActions.map((action) => action.label)).toEqual(
+      expect.arrayContaining(['最后一手打活赏', '最后一手打死赏']),
+    )
+
+    const botAction = heuristicBotStrategy.chooseAction({
+      round,
+      seat: 0,
+      seatState: round.seats[0],
+      legalActions,
+    })
+
+    expect(botAction.intent).toBe('lead-reward-live')
+    expect(selectedCardIdsMatchForTest(
+      botAction.selectedCardIds,
+      selectCards(round, 0, REWARD_DEFINITION_IDS),
+    )).toBe(true)
+  })
+
+  it('机器人确认吃赏对子已经见光时，普通赏也会优先打活赏', () => {
+    const round = appendHistoryPlay(
+      appendHistoryPlay(
+        appendHistoryPlay(
+          markAfterOpeningLead(
+            createRound(
+              {
+                0: ['point_three', 'point_six', 'long_ban', 'yao_yao_wu', 'long_chang'],
+              },
+              0,
+            ),
+          ),
+          ['point_nine', 'point_nine'],
+        ),
+        ['point_seven', 'point_seven'],
+      ),
+      ['point_five', 'point_five'],
+    )
+    round.seats[0].config.mode = 'bot'
+    const legalActions = listTurnActions(round, 0)
+
+    expect(legalActions.map((action) => action.label)).toContain('打活赏')
+    expect(legalActions.map((action) => action.label)).toContain('打死赏')
+
+    const botAction = heuristicBotStrategy.chooseAction({
+      round,
+      seat: 0,
+      seatState: round.seats[0],
+      legalActions,
+    })
+
+    expect(botAction.intent).toBe('lead-reward-live')
+  })
+
   it('机器人早期后手不会为了 1 墩浪费点子脑子', () => {
     const round = createRound(
       {
