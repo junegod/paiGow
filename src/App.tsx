@@ -975,9 +975,11 @@ function App() {
           roundNumber={currentRound.roundNumber}
           preparedActions={actionPanelPreparedActions}
           canInteract={canUseActionPanel}
+          isOrganizingHand={controller.isHandOrganizing}
           useBowlForRoll={Boolean(rollActionForBowl)}
           onCardToggle={toggleCardSelectionWithSound}
           onHandReorder={controller.reorderCurrentHand}
+          onOrganizeHand={controller.organizeHumanHand}
           onActionSubmit={controller.submitPreparedAction}
         />
 

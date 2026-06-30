@@ -10,6 +10,7 @@ import {
 import { MockMatchApi } from '@/services/mock-match-api/MockMatchApi'
 import { DEFAULT_SEAT_CONFIGS } from '@/rules-variants/ji-an-da-suo-zi/cardCatalog'
 import { RULE_ENGINE_REVISION } from '@/rules-variants/ji-an-da-suo-zi/engine'
+import { arrangeJiAnDaSuoZiHandIds } from '@/rules-variants/ji-an-da-suo-zi/handArrangement'
 import { DICE_TOTAL_DISPLAY_MS } from '@/ui/diceTiming'
 import type {
   CardInstance,
@@ -24,6 +25,8 @@ import type {
 } from '@/rules-core/types'
 
 const COMPLETED_TRICK_REVIEW_MS = 2000
+const HAND_AUTO_ORGANIZE_DELAY_MS = 220
+const HAND_ORGANIZE_ANIMATION_MS = 720
 
 interface OpeningCeremonyState {
   /** 当前仪式对应的局号，用来让动画组件在每一局重新播放。 */
@@ -98,11 +101,14 @@ export function useGameController() {
   const [matchState, setMatchState] = useState<MatchState>(() => apiRef.current.getState())
   const [selectedCardIds, setSelectedCardIds] = useState<string[]>([])
   const [handOrderBySeat, setHandOrderBySeat] = useState<Partial<Record<SeatId, string[]>>>({})
+  const [isHandOrganizing, setIsHandOrganizing] = useState(false)
   const [reviewTrick, setReviewTrick] = useState<TrickRecord | null>(null)
   const [diceReviewKey, setDiceReviewKey] = useState<string | null>(null)
   const [openingCeremony, setOpeningCeremony] = useState<OpeningCeremonyState | null>(null)
   const reviewTimerRef = useRef<number | null>(null)
   const diceReviewTimerRef = useRef<number | null>(null)
+  const handOrganizeTimerRef = useRef<number | null>(null)
+  const handOrganizeAnimationTimerRef = useRef<number | null>(null)
   const lastReviewTrickKeyRef = useRef<string | null>(null)
 
   const currentRound = matchState.currentRound
@@ -193,6 +199,70 @@ export function useGameController() {
       })
       reviewTimerRef.current = null
     }, COMPLETED_TRICK_REVIEW_MS)
+  }
+
+  /**
+   * 清理理牌相关计时器。开新局、返回首页或组件卸载时调用，
+   * 防止上一局延迟理牌误改到下一局手牌。
+   */
+  function clearHandOrganizeTimers(): void {
+    if (handOrganizeTimerRef.current !== null) {
+      window.clearTimeout(handOrganizeTimerRef.current)
+      handOrganizeTimerRef.current = null
+    }
+
+    if (handOrganizeAnimationTimerRef.current !== null) {
+      window.clearTimeout(handOrganizeAnimationTimerRef.current)
+      handOrganizeAnimationTimerRef.current = null
+    }
+  }
+
+  /**
+   * 给指定座位应用吉安打索子的理牌顺序。这里仅调整 UI 顺序，
+   * 不修改规则层真实手牌，因此不会影响出牌合法性判断。
+   */
+  function organizeSeatHand(seatState: SeatState): void {
+    if (seatState.hand.length <= 1) {
+      return
+    }
+
+    const nextOrder = arrangeJiAnDaSuoZiHandIds(seatState.hand)
+
+    setHandOrderBySeat((previousOrderBySeat) => {
+      const previousOrder = previousOrderBySeat[seatState.seat]
+
+      if (previousOrder && areStringArraysEqual(previousOrder, nextOrder)) {
+        return previousOrderBySeat
+      }
+
+      return {
+        ...previousOrderBySeat,
+        [seatState.seat]: nextOrder,
+      }
+    })
+
+    setIsHandOrganizing(true)
+
+    if (handOrganizeAnimationTimerRef.current !== null) {
+      window.clearTimeout(handOrganizeAnimationTimerRef.current)
+    }
+
+    handOrganizeAnimationTimerRef.current = window.setTimeout(() => {
+      setIsHandOrganizing(false)
+      handOrganizeAnimationTimerRef.current = null
+    }, HAND_ORGANIZE_ANIMATION_MS)
+  }
+
+  /**
+   * 当前版本固定只有一个真人玩家。手动整理按钮和开局自动整理都调用这里，
+   * 后续多人或联机时可以把 seat 参数开放出去。
+   */
+  function organizeHumanHand(): void {
+    if (!humanSeatState || openingCeremony) {
+      return
+    }
+
+    organizeSeatHand(humanSeatState)
   }
 
   /**
@@ -308,6 +378,8 @@ export function useGameController() {
       if (diceReviewTimerRef.current !== null) {
         window.clearTimeout(diceReviewTimerRef.current)
       }
+
+      clearHandOrganizeTimers()
     }
   }, [])
 
@@ -461,6 +533,8 @@ export function useGameController() {
    * 开始新一局或下一局时，清理本地手牌排序并把首页开局选项交给 mock 服务。
    */
   function startRound(options?: StartRoundOptions): void {
+    clearHandOrganizeTimers()
+    setIsHandOrganizing(false)
     setHandOrderBySeat({})
     setReviewTrick(null)
     setDiceReviewKey(null)
@@ -488,6 +562,8 @@ export function useGameController() {
    * 重新开一场牌局，沿用当前座位配置。
    */
   function restartMatch(): void {
+    clearHandOrganizeTimers()
+    setIsHandOrganizing(false)
     setHandOrderBySeat({})
     setReviewTrick(null)
     setDiceReviewKey(null)
@@ -504,7 +580,20 @@ export function useGameController() {
    * 开局仪式结束后放开真实牌局。机器人自动行动会在这个状态清空后继续。
    */
   function finishOpeningCeremony(): void {
+    const humanSeatSnapshot = matchState.currentRound?.seats.find((seatState) =>
+      seatState.config.mode === 'human') ?? null
+
     setOpeningCeremony(null)
+
+    if (!humanSeatSnapshot) {
+      return
+    }
+
+    clearHandOrganizeTimers()
+    handOrganizeTimerRef.current = window.setTimeout(() => {
+      organizeSeatHand(humanSeatSnapshot)
+      handOrganizeTimerRef.current = null
+    }, HAND_AUTO_ORGANIZE_DELAY_MS)
   }
 
   /**
@@ -526,10 +615,12 @@ export function useGameController() {
     isDiceReviewing,
     selectionPreview,
     selectedCardIds,
+    isHandOrganizing,
     ruleSet: apiRef.current.getRuleSet(),
     replayState: apiRef.current.getReplayState(),
     toggleCardSelection,
     reorderCurrentHand,
+    organizeHumanHand,
     setSelectedCardIds,
     submitPreparedAction,
     startRound,

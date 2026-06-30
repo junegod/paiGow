@@ -12,9 +12,13 @@ interface ActionPanelProps {
   roundNumber?: number
   preparedActions: PreparedAction[]
   canInteract: boolean
+  /** 是否正在播放自动理牌动画，用于按钮禁用和手牌高亮。 */
+  isOrganizingHand?: boolean
   useBowlForRoll?: boolean
   onCardToggle: (cardId: string) => void
   onHandReorder: (cardIds: string[]) => void
+  /** 手动整理当前真人手牌，只调整本地 UI 顺序。 */
+  onOrganizeHand?: () => void
   onActionSubmit: (action: PreparedAction) => void
 }
 
@@ -126,12 +130,15 @@ export function ActionPanel({
   roundNumber,
   preparedActions,
   canInteract,
+  isOrganizingHand = false,
   useBowlForRoll = false,
   onCardToggle,
   onHandReorder,
+  onOrganizeHand,
   onActionSubmit,
 }: ActionPanelProps) {
   const visibleActionButtons = createVisibleActionButtons(preparedActions, useBowlForRoll)
+  const canOrganizeHand = Boolean(onOrganizeHand) && handCards.length > 1
   const roundBadge = roundNumber ? (
     <span className="action-panel__round">第{roundNumber}局</span>
   ) : null
@@ -154,6 +161,17 @@ export function ActionPanel({
           <p className="action-panel__seat">{seatState.config.name}</p>
           <p className="action-panel__hint">{hint}</p>
         </div>
+        {canOrganizeHand ? (
+          <button
+            type="button"
+            className="action-panel__organize"
+            onClick={onOrganizeHand}
+            disabled={isOrganizingHand}
+            title="按脑子、可出组合和大小自动整理手牌"
+          >
+            {isOrganizingHand ? '整理中' : '整理'}
+          </button>
+        ) : null}
         {roundBadge}
       </div>
 
@@ -165,6 +183,7 @@ export function ActionPanel({
         selectedCardIds={selectedCardIds}
         onCardClick={canInteract ? onCardToggle : undefined}
         draggable={canInteract}
+        organizing={isOrganizingHand}
         onCardReorder={onHandReorder}
       />
 

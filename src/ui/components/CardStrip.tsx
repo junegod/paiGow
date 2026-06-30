@@ -40,6 +40,8 @@ interface CardStripProps {
   onCardClick?: (cardId: string) => void
   /** 是否允许横向拖动重排；首版只开放给底部当前真人手牌。 */
   draggable?: boolean
+  /** 自动理牌动画态，会给手牌加轻微抬起和光效。 */
+  organizing?: boolean
   /** 拖动结束或吸附到新位置时返回当前牌 id 顺序。 */
   onCardReorder?: (cardIds: string[]) => void
 }
@@ -80,6 +82,7 @@ export function CardStrip({
   selectedCardIds = [],
   onCardClick,
   draggable = false,
+  organizing = false,
   onCardReorder,
 }: CardStripProps) {
   const [draggingCardId, setDraggingCardId] = useState<string | null>(null)
@@ -91,6 +94,7 @@ export function CardStrip({
   const latestCardIdsRef = useRef<string[]>([])
   const lastPointerStartAtRef = useRef(0)
   const canReorder = draggable && cards.length > 1 && onCardReorder
+  const shouldUseLayoutAnimation = canReorder || (hand && spread)
   const cardIds = cards.map((card) => card.id)
   latestCardIdsRef.current = cardIds
   const className = [
@@ -101,6 +105,7 @@ export function CardStrip({
     mini ? 'card-strip--mini' : '',
     spread ? 'card-strip--spread' : '',
     canReorder ? 'card-strip--draggable' : '',
+    organizing ? 'card-strip--organizing' : '',
   ]
     .filter(Boolean)
     .join(' ')
@@ -322,7 +327,7 @@ export function CardStrip({
     )
   }
 
-  if (canReorder) {
+  if (shouldUseLayoutAnimation) {
     const previewCard = dragPreview
       ? cards.find((card) => card.id === dragPreview.cardId) ?? null
       : null
@@ -358,8 +363,8 @@ export function CardStrip({
                 zIndex: draggingCardId === card.id ? 30 : isSelected ? 3 : 1,
               }}
               transition={{ type: 'spring', stiffness: 720, damping: 34, mass: 0.48 }}
-              onPointerDown={(event) => handlePointerDown(event, card.id)}
-              onMouseDown={(event) => handleMouseDown(event, card.id)}
+              onPointerDown={canReorder ? (event) => handlePointerDown(event, card.id) : undefined}
+              onMouseDown={canReorder ? (event) => handleMouseDown(event, card.id) : undefined}
             >
               {renderCard(card, true, index)}
             </motion.div>
