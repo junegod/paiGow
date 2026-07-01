@@ -1,32 +1,139 @@
-# React + TypeScript + Vite
+# 打索子
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+江西吉安新居村非物质文化遗产数字化项目。
 
-Currently, two official plugins are available:
+本项目记录和还原江西省吉安市富滩镇新居村流传的传统民俗牌九棋盘游戏“打索子”。它不是商业化对战平台，也不是赌博工具，而是为了把村里的老玩法、老口语、老规矩用现代 Web 技术保存下来，让年轻人也能在手机上学习、体验和继续传承。
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## 为什么做这个项目
 
-## React Compiler
+打索子曾经是村里人围坐在一起消遣、交流和记住乡土关系的一种方式，但现在年轻人会玩、愿意玩的人已经越来越少。很多规则并没有完整写在纸上，而是靠长辈口传、靠一局一局打出来的经验来记住。如果没有人继续整理和记录，再过几十年，一些细节口径、地方叫法和判断习惯可能就会慢慢消失。
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+做这个开源项目，是想把新居村这套玩法用代码、文档、测试和界面保存下来。哪怕以后真正坐在一起打的人少了，后人仍然可以通过这个项目看到牌长什么样、规则怎么走、为什么要这样结算，也可以继续修正、补充和传承。开源不是为了把它做成商业产品，而是希望这份村里的传统文化能被更长久地留下来。
 
-## Expanding the Oxlint configuration
+## 在线体验
 
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
+在线测试地址：[https://game9.qdkl.cn/](https://game9.qdkl.cn/)
 
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+## 界面预览
+
+| 首页 | 开局掷骰定庄 | 牌桌对局 | 回合停留 |
+| --- | --- | --- | --- |
+| <img src="./docs/screenshots/01-home.png" alt="打索子首页" width="220"> | <img src="./docs/screenshots/02-opening-ceremony.png" alt="开局掷骰定庄" width="220"> | <img src="./docs/screenshots/03-table-play.png" alt="牌桌对局" width="220"> | <img src="./docs/screenshots/04-trick-review.png" alt="回合停留" width="220"> |
+
+| 回合详情 | 3D 骰碗 | 规则页面 | 定制牌局 |
+| --- | --- | --- | --- |
+| <img src="./docs/screenshots/05-trick-detail.png" alt="回合详情" width="220"> | <img src="./docs/screenshots/06-dice-bowl.png" alt="3D 骰碗" width="220"> | <img src="./docs/screenshots/07-rules.png" alt="规则页面" width="260"> | <img src="./docs/screenshots/08-custom-round.png" alt="定制牌局" width="260"> |
+
+## 项目定位
+
+打索子是一种四人参与的传统牌九棋盘游戏，也可以理解为新居村本地口传规则下的骨牌类民俗玩法。每局 32 张牌，四家各 8 张，按回合明打、吃牌、弃牌、掷骰定门、抢墩和结算。玩法里包含“脑子”“赏”“卖屁股”“活赏”“死赏”“墩数接法”等本地口语和规则细节，很多判断依赖老一辈玩家口传经验。
+
+这个项目的目标是：
+
+- 把新居村打索子的规则整理成可阅读、可测试、可运行的数字版本。
+- 在移动端提供接近线下牌桌的操作体验，方便村里人随时练习。
+- 通过自绘牌面、骰碗动画、抓牌动画和赢墩复盘，还原传统桌面氛围。
+- 保留规则引擎扩展能力，后续可以继续补充不同村庄或不同口径的玩法。
+
+## 当前功能
+
+- 单机对战：一个真人玩家对三个机器人。
+- 定制牌局：玩家可以在首页指定自己的起手牌，方便验证规则和赏钱。
+- 本地用户：浏览器本地保存用户、头像、积分流水和最近战绩。
+- 积分保护：正常结算才记录输赢；只有玩家中途确认返回首页或重新开始时，才扣系统防刷牌分。
+- 自绘牌面：32 张牌全部由代码绘制，不依赖整张牌图片切图。
+- 3D 骰碗：右上角常驻骰碗，掷骰时移动到桌面中央播放 3D 动画。
+- 洗牌抓牌：开局和下一局有洗牌、垒牌、抓牌的桌面仪式动画。
+- 回合复盘：点击赢墩数量或回合记录可以查看每一回合出的牌。
+- 规则页面：首页内置详细规则说明，并使用游戏内真实自绘牌做示例。
+- 机器人策略：机器人只从规则引擎枚举的合法动作中选择，并对最后一墩、活赏、死赏、墩数收益和吃赏风险做启发式判断。
+
+## 技术栈
+
+- React 19
+- TypeScript
+- Vite
+- React Three Fiber / Drei / Three.js
+- Framer Motion
+- Vitest
+- Oxlint
+- IndexedDB 本地数据层
+
+## 本地运行
+
+安装依赖：
+
+```bash
+pnpm install
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+启动开发环境：
+
+```bash
+pnpm dev
+```
+
+默认访问：
+
+```text
+http://127.0.0.1:5173/
+```
+
+项目的 dev 命令已经使用 `--host 0.0.0.0`，同一局域网手机可通过电脑 IP 访问，例如：
+
+```text
+http://192.168.x.x:5173/
+```
+
+## 常用命令
+
+```bash
+pnpm lint
+pnpm test -- --run
+pnpm build
+pnpm audit:bots
+```
+
+命令说明：
+
+- `pnpm lint`：运行 Oxlint。
+- `pnpm test -- --run`：运行规则和交互相关单测。
+- `pnpm build`：执行 TypeScript 编译并构建生产包。
+- `pnpm audit:bots`：批量跑机器人对局，检查机器人动作是否合法、对局是否能稳定结束。
+
+## 项目结构
+
+```text
+src/
+  app/                         # 前端牌局控制器
+  local-data/                  # 本地用户、积分流水、战绩和设置
+  rules-core/                  # 通用规则类型和基础工具
+  rules-variants/
+    ji-an-da-suo-zi/           # 新居村打索子规则实现
+  services/
+    mock-match-api/            # 当前纯前端 mock 服务边界
+  ui/
+    components/                # 牌桌、首页、规则页、弹窗和 3D 骰碗
+    audio/                     # 游戏音效入口
+scripts/                       # 机器人审计脚本
+public/sounds/                 # 可替换音效素材
+打索子规则.md                   # 当前已整理的规则文档
+```
+
+## 规则说明
+
+规则文档见：
+
+```text
+打索子规则.md
+```
+
+规则引擎和 UI 都以内部稳定 ID 判断牌，不依赖中文别名。中文牌名主要用于展示和说明，避免不同人口语叫法影响程序逻辑。
+
+## 文化说明
+
+本项目仅用于江西省吉安市富滩镇新居村传统文化记录、规则学习和村内部娱乐体验。项目不提供真钱充值、提现、抽成、线上赌场或任何赌博相关功能。若后续打包成 Android / iOS 单机应用，也应继续保持这一定位。
+
+## 开源协议
+
+本项目使用 [MIT License](./LICENSE) 开源。
