@@ -668,9 +668,9 @@ function createLeadPreparedActions(
           isFinalHand ? 'final-reward-live' : 'reward-live',
           ...pattern.cardInstanceIds,
         ]),
-        label: isFinalHand ? '最后一手打活赏' : '打活赏',
+        label: isFinalHand ? '打孵赏' : '打活赏',
         description: isFinalHand
-          ? '最后两张是一对赏，不掷骰；活赏仍可能被九九、七七、五五吃掉。'
+          ? '最后两墩牌出的一对赏叫孵赏，不掷骰；仍可能被九九、七七、五五吃掉。'
           : '活赏可被九九、七七、五五吃掉。',
         intent: 'lead-reward-live',
         selectedCardIds: pattern.cardInstanceIds,
@@ -687,9 +687,9 @@ function createLeadPreparedActions(
           isFinalHand ? 'final-reward-dead' : 'reward-dead',
           ...pattern.cardInstanceIds,
         ]),
-        label: isFinalHand ? '最后一手打死赏' : '打死赏',
+        label: isFinalHand ? '打死赏' : '打死赏',
         description: isFinalHand
-          ? '最后两张是一对赏，不掷骰；死赏不能被吃，也不产生赏钱。'
+          ? '最后两墩牌也可以按死赏出，不掷骰；死赏不能被吃，也不产生赏钱。'
           : '死赏不能被吃，也不产生赏钱。',
         intent: 'lead-reward-dead',
         selectedCardIds: pattern.cardInstanceIds,

@@ -55,7 +55,9 @@ function getSettlementTitle(round: RoundState, settlement: NonNullable<RoundStat
     round.rewardOutcome &&
     round.rewardOutcome.mode === 'live' &&
     !round.rewardOutcome.wasEaten
-      ? '，另算赏钱'
+      ? round.rewardOutcome.wasLastTwo
+        ? '，另算孵赏钱'
+        : '，另算赏钱'
       : '，无额外赏钱'
 
   return `基础按 4 墩保本${rewardText}`
@@ -76,6 +78,14 @@ export function SettlementPanel({
   if (!settlement) {
     return null
   }
+
+  const rewardDeltaLabel =
+    round.rewardOutcome &&
+    round.rewardOutcome.mode === 'live' &&
+    !round.rewardOutcome.wasEaten &&
+    round.rewardOutcome.wasLastTwo
+      ? '孵赏钱'
+      : '赏钱'
 
   return (
     <section className="settlement-panel">
@@ -104,7 +114,7 @@ export function SettlementPanel({
             </p>
             {seatResult.rewardDelta !== 0 ? (
               <p className="settlement-seat__meta settlement-seat__meta--reward">
-                {formatDeltaDetail('赏钱', seatResult.rewardDelta)}
+                {formatDeltaDetail(rewardDeltaLabel, seatResult.rewardDelta)}
               </p>
             ) : null}
           </article>

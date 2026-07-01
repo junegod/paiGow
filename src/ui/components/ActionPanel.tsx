@@ -66,6 +66,18 @@ function createResponseActionButton(action: PreparedAction): VisibleActionButton
 }
 
 /**
+ * 赏牌按钮要把最后两墩的活赏显示为“孵赏”，
+ * 这样玩家在出牌区和结算区看到的是同一套传统叫法。
+ */
+function createRewardActionLabel(action: PreparedAction): string {
+  if (action.intent === 'lead-reward-live') {
+    return action.label.includes('孵赏') ? '孵赏' : '活赏'
+  }
+
+  return '死赏'
+}
+
+/**
  * 将规则层可能返回的多个动作压缩成桌面上的文字按钮。
  */
 function createVisibleActionButtons(
@@ -79,7 +91,7 @@ function createVisibleActionButtons(
   if (rewardActions.length > 0) {
     return rewardActions.map((action) => ({
       action,
-      label: action.intent === 'lead-reward-live' ? '活赏' : '死赏',
+      label: createRewardActionLabel(action),
       role: 'normal',
     }))
   }

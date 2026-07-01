@@ -532,7 +532,7 @@ describe('吉安打索子规则引擎', () => {
     expect(botAction.intent).not.toBe('roll-dice')
   })
 
-  it('机器人最后两张赏会优先打活赏争取翻倍赏钱', () => {
+  it('机器人最后两墩赏会优先打孵赏争取翻倍赏钱', () => {
     const round = markAfterOpeningLead(
       createRound({ 0: REWARD_DEFINITION_IDS }, 0),
     )
@@ -541,7 +541,7 @@ describe('吉安打索子规则引擎', () => {
     const legalActions = listTurnActions(round, 0)
 
     expect(legalActions.map((action) => action.label)).toEqual(
-      expect.arrayContaining(['最后一手打活赏', '最后一手打死赏']),
+      expect.arrayContaining(['打孵赏', '打死赏']),
     )
 
     const botAction = heuristicBotStrategy.chooseAction({
@@ -1141,6 +1141,9 @@ describe('吉安打索子规则引擎', () => {
     expect(sweepWithLastTwoReward.seats[1].baseDelta).toBe(-8)
     expect(sweepWithLastTwoReward.seats[1].rewardDelta).toBe(-8)
     expect(sweepWithLastTwoReward.seats[1].totalDelta).toBe(-16)
+    expect(sweepWithLastTwoReward.summary).toBe(
+      '满 8 墩结算，基础每家出 8 个，孵赏钱每家另出 8 个。',
+    )
   })
 
   it('未赢最后一墩但打到 5 墩时，基础仍然进 1 个', () => {
@@ -1163,7 +1166,7 @@ describe('吉安打索子规则引擎', () => {
     expect(settlement.seats[3].baseDelta).toBe(-4)
   })
 
-  it('5 墩基础进分需要和活赏赏钱合并结算，赏钱可以抵扣进分', () => {
+  it('普通活赏只向未满 3 墩的人收赏钱，3 墩及以上免出', () => {
     const round = createSettlementRound([5, 3, 0, 0], 1)
 
     round.rewardOutcome = {
@@ -1178,8 +1181,39 @@ describe('吉安打索子规则引擎', () => {
     const settlement = calculateSettlement(round)
 
     expect(settlement.seats[0].baseDelta).toBe(1)
-    expect(settlement.seats[0].rewardDelta).toBe(-2)
-    expect(settlement.seats[0].totalDelta).toBe(-1)
+    expect(settlement.seats[0].rewardDelta).toBe(0)
+    expect(settlement.seats[0].totalDelta).toBe(1)
+    expect(settlement.seats[1].rewardDelta).toBe(4)
+    expect(settlement.seats[2].rewardDelta).toBe(-2)
+    expect(settlement.seats[3].rewardDelta).toBe(-2)
+    expect(settlement.summary).toBe(
+      '基础分按 4 墩保本逐家进出，最后一回合赢家承接净额。中途赏未被吃，未满 3 墩的玩家每人另出 2 个赏钱。',
+    )
+  })
+
+  it('孵赏只向未满 3 墩的人收孵赏钱，并在结算文案里使用传统叫法', () => {
+    const round = createSettlementRound([2, 2, 3, 1], 0)
+
+    round.rewardOutcome = {
+      owner: 0,
+      mode: 'live',
+      wasLastTwo: true,
+      wasEaten: false,
+      trickIndex: 5,
+      winner: 0,
+    }
+
+    const settlement = calculateSettlement(round)
+
+    expect(settlement.seats[0].rewardDelta).toBe(8)
+    expect(settlement.seats[1].rewardDelta).toBe(-4)
+    expect(settlement.seats[2].rewardDelta).toBe(0)
+    expect(settlement.seats[3].rewardDelta).toBe(-4)
+    expect(settlement.seats[0].summary).toContain('孵赏钱收 8 个')
+    expect(settlement.seats[1].summary).toContain('孵赏钱出 4 个')
+    expect(settlement.summary).toBe(
+      '基础分按 4 墩保本逐家进出，最后一回合赢家承接净额。孵赏未被吃，未满 3 墩的玩家每人另出 4 个孵赏钱。',
+    )
   })
 
   it('死赏不能被吃但不产生额外赏钱', () => {

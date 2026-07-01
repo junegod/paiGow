@@ -5,8 +5,8 @@ import type { ActionShape } from '@/rules-variants/ji-an-da-suo-zi/botStrategyAn
 import { LIVE_REWARD_EATERS } from '@/rules-variants/ji-an-da-suo-zi/patternCatalog'
 
 /**
- * 活赏未被吃时，每个对手需要出的赏钱。最后两张赏更贵，
- * 所以机器人必须把“最后两张打活赏”当成高价值机会，而不是只看能否保底拿墩。
+ * 活赏未被吃时，每个需要出赏钱的对手要出的金额。
+ * 最后两墩出的赏叫孵赏，钱更贵，所以机器人必须把它当成高价值机会。
  */
 const LIVE_REWARD_VALUE_PER_OPPONENT = {
   normal: 2,
@@ -78,8 +78,8 @@ function estimateEligibleEaterSeatFactor(context: BotDecisionContext): number {
 }
 
 /**
- * 判断这次赏是不是最后两张牌。最后两张活赏是明显的收益点：
- * 不仅每家赏钱翻倍，还经常关系到最后一墩控制权。
+ * 判断这次赏是不是孵赏。最后两墩活赏是明显的收益点：
+ * 不仅孵赏钱翻倍，还经常关系到最后一墩控制权。
  */
 export function isLastTwoRewardAction(
   context: BotDecisionContext,
@@ -89,7 +89,7 @@ export function isLastTwoRewardAction(
 }
 
 /**
- * 估算活赏被吃的风险分。这个分只做扣分参考，不会压过最后两张活赏的核心收益，
+ * 估算活赏被吃的风险分。这个分只做扣分参考，不会压过孵赏的核心收益，
  * 否则机器人会过度保守，变成“见赏就死赏”。
  */
 export function estimateLiveRewardEatRiskScore(
@@ -137,8 +137,8 @@ function estimateRewardPierPressureScore(
 }
 
 /**
- * 活赏收益评分。普通活赏按每家 2 个赏钱建模，最后两张按每家 4 个赏钱建模；
- * 最后一手额外加权，确保机器人知道最后两张赏比普通两墩更值钱。
+ * 活赏收益评分。普通活赏按每家 2 个赏钱建模，孵赏按每家 4 个孵赏钱建模；
+ * 最后一手额外加权，确保机器人知道孵赏比普通两墩更值钱。
  */
 export function estimateLiveRewardLeadScore(
   context: BotDecisionContext,
@@ -162,7 +162,7 @@ export function estimateLiveRewardLeadScore(
 
 /**
  * 死赏只保留“稳拿不被吃”的战术价值，但明确扣掉没有赏钱的机会成本。
- * 特别是最后两张牌，死赏会浪费翻倍赏钱，所以必须被强烈压低。
+ * 特别是最后两墩牌，死赏会浪费孵赏钱，所以必须被强烈压低。
  */
 export function estimateDeadRewardLeadScore(
   context: BotDecisionContext,

@@ -58,7 +58,7 @@ function chooseHighestScoreAction(context: BotDecisionContext): PreparedAction {
 /**
  * 吉安打索子启发式机器人 v3。核心目标不是“每墩都抢”，而是：
  * 早期少浪费脑子和强对子，中期抢多墩高安全牌，后期尽量拿最后一墩；
- * 遇到赏时会把活赏赏钱、最后两张翻倍和被吃风险一起纳入判断。
+ * 遇到赏时会把活赏赏钱、孵赏翻倍和被吃风险一起纳入判断。
  */
 export const heuristicBotStrategy: BotStrategy = {
   id: STRATEGY_ID,
