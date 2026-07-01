@@ -381,19 +381,16 @@ async function writeAbandonedRoundPenalty(
 }
 
 /**
- * 应用上次刷新、关闭或崩溃留下的未完成积分局。这里在应用启动读快照时执行，
- * 比 beforeunload 里直接异步写库更可靠。
+ * 清理旧版本留下的未完成积分局登记。新版不再开局预登记，
+ * 因此启动时不能自动补扣，只做兼容性清理，避免旧登记影响当前局扣分。
  */
-async function applyInterruptedRoundPenalty(database: IDBDatabase): Promise<void> {
+async function clearInterruptedRoundWithoutPenalty(database: IDBDatabase): Promise<void> {
   const settings = await getLocalItem(database, LOCAL_DATA_STORES.settings, LOCAL_SETTINGS_ID)
-  const activeRound = settings?.activeScoredRound
 
-  if (!settings || !activeRound) {
+  if (!settings?.activeScoredRound) {
     return
   }
 
-  const ledgers = await getAllLocalItems(database, LOCAL_DATA_STORES.scoreLedger)
-  await writeAbandonedRoundPenalty(database, activeRound, ledgers)
   await clearActiveScoredRound(database, settings)
 }
 
@@ -443,7 +440,7 @@ export async function loadLocalDataSnapshot(): Promise<LocalDataSnapshot> {
     const preparedUsers = await getAllLocalItems(database, LOCAL_DATA_STORES.users)
     const preparedSettings = await getLocalItem(database, LOCAL_DATA_STORES.settings, LOCAL_SETTINGS_ID)
     await migrateWalletToOpeningBalance(database, preparedUsers, preparedSettings)
-    await applyInterruptedRoundPenalty(database)
+    await clearInterruptedRoundWithoutPenalty(database)
 
     const usersAfterPenalty = await getAllLocalItems(database, LOCAL_DATA_STORES.users)
     await ensureUsersHavePlayableScore(database, usersAfterPenalty)
@@ -556,40 +553,9 @@ function createActiveScoredRound(
 }
 
 /**
- * 登记正在进行的积分局。只要这条登记还在，刷新或非正常离开后下次加载会补扣离局分。
- */
-export async function markActiveScoredRoundForUser(
-  userId: string,
-  matchState: MatchState,
-  round: RoundState,
-): Promise<LocalDataSnapshot> {
-  if (round.phase === 'settled') {
-    return loadLocalDataSnapshot()
-  }
-
-  const database = await openLocalDatabase()
-
-  try {
-    const settings =
-      await getLocalItem(database, LOCAL_DATA_STORES.settings, LOCAL_SETTINGS_ID) ??
-      createAppSettings(userId)
-
-    await putLocalItem(database, LOCAL_DATA_STORES.settings, {
-      ...settings,
-      activeUserId: settings.activeUserId ?? userId,
-      activeScoredRound: createActiveScoredRound(userId, matchState, round),
-      updatedAt: nowIsoString(),
-    })
-  } finally {
-    database.close()
-  }
-
-  return loadLocalDataSnapshot()
-}
-
-/**
  * 主动中途离局时立即扣系统分，并清空未完成登记。
- * 这条路径用于菜单“重新开始 / 回到首页”，刷新关闭则由下次加载补扣。
+ * 这条路径只用于菜单“重新开始 / 返回首页”的强制离开确认；
+ * 普通开局、刷新提示和关闭页面都不会提前或自动扣分。
  */
 export async function recordAbandonedRoundPenaltyForUser(
   userId: string,
@@ -606,14 +572,11 @@ export async function recordAbandonedRoundPenaltyForUser(
     const settings =
       await getLocalItem(database, LOCAL_DATA_STORES.settings, LOCAL_SETTINGS_ID) ??
       createAppSettings(userId)
-    const activeRound = settings.activeScoredRound ?? createActiveScoredRound(userId, matchState, round)
+    const activeRound = createActiveScoredRound(userId, matchState, round)
     const ledgers = await getAllLocalItems(database, LOCAL_DATA_STORES.scoreLedger)
 
     await writeAbandonedRoundPenalty(database, activeRound, ledgers)
-    await clearActiveScoredRound(database, {
-      ...settings,
-      activeScoredRound: activeRound,
-    })
+    await clearActiveScoredRound(database, settings)
     await ensureUsersHavePlayableScore(database, [normalizeUserProfile({
       id: userId,
       nickname: '',

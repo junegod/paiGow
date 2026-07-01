@@ -342,7 +342,6 @@ function App() {
   const [lastVisibleDiceRoll, setLastVisibleDiceRoll] = useState<DiceRoll | null>(null)
   const previousAudioSnapshotRef = useRef<RoundAudioSnapshot | null>(null)
   const recordedLocalRoundKeyRef = useRef<string | null>(null)
-  const activeScoredRoundKeyRef = useRef<string | null>(null)
 
   const cardDefinitionMap = useMemo(
     () => createCardDefinitionMap(controller.ruleSet.getAllCardDefinitions()),
@@ -417,25 +416,8 @@ function App() {
   }, [fallbackDiceRoll])
 
   /**
-   * 积分局一开始就登记为“未完成”。如果用户刷新、关闭或崩溃，
-   * 下次加载本地数据时会根据这条登记补扣中途离局分。
-   */
-  useEffect(() => {
-    if (!activeScoredRoundKey || !currentRound) {
-      return
-    }
-
-    if (activeScoredRoundKeyRef.current === activeScoredRoundKey) {
-      return
-    }
-
-    activeScoredRoundKeyRef.current = activeScoredRoundKey
-    void localPlayerData.markActiveScoredRound(controller.matchState, currentRound)
-  }, [activeScoredRoundKey, controller.matchState, currentRound, localPlayerData])
-
-  /**
-   * 刷新浏览器、关闭标签页或跳转离开时显示二次确认。
-   * 浏览器不会允许自定义文案，但 preventDefault/returnValue 能触发原生确认框。
+   * 刷新浏览器、关闭标签页或跳转离开时只显示二次确认，不提前写入扣分登记。
+   * 扣 4 分只发生在玩家通过牌桌菜单确认“返回首页 / 重新开始”的强制离开动作里。
    */
   useEffect(() => {
     if (!shouldWarnBeforeLeavingScoredRound) {
@@ -444,7 +426,7 @@ function App() {
 
     function handleBeforeUnload(event: BeforeUnloadEvent): string {
       event.preventDefault()
-      event.returnValue = '当前积分局未完成，离开会扣 4 分。'
+      event.returnValue = '当前积分局未完成，确认离开会放弃当前局。'
       return event.returnValue
     }
 
@@ -765,11 +747,10 @@ function App() {
 
     try {
       await localPlayerData.recordAbandonedRoundPenalty(controller.matchState, currentRound)
-      activeScoredRoundKeyRef.current = null
       executeMenuLeaveAction(leaveConfirmState.action)
       setLeaveConfirmState(null)
     } catch {
-      setLeaveConfirmError('本地扣分记录失败，先别离开。请再点一次，或者刷新后系统会自动补扣。')
+      setLeaveConfirmError('本地扣分记录失败，先别离开。请再点一次。')
     } finally {
       setIsLeavePenaltySubmitting(false)
     }

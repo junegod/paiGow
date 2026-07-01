@@ -8,7 +8,6 @@ import type { LocalDataSnapshot } from '@/local-data/types'
 import {
   createLocalUser,
   loadLocalDataSnapshot,
-  markActiveScoredRoundForUser,
   recordAbandonedRoundPenaltyForUser,
   recordSettledRoundForUser,
   switchLocalUser,
@@ -106,24 +105,6 @@ export function useLocalPlayerData() {
   }
 
   /**
-   * 积分局开始后登记未完成状态。刷新或关闭浏览器时，
-   * 下次加载会据此识别为非正常离局并补扣系统分。
-   */
-  async function markActiveScoredRound(matchState: MatchState, round: RoundState): Promise<void> {
-    const activeUserId = snapshot?.activeUserId
-
-    if (!activeUserId) {
-      return
-    }
-
-    try {
-      applySnapshot(await markActiveScoredRoundForUser(activeUserId, matchState, round))
-    } catch (error) {
-      handleError(error)
-    }
-  }
-
-  /**
    * 主动中途离局时立即扣分，避免用户反复重新开局刷好手牌。
    */
   async function recordAbandonedRoundPenalty(
@@ -150,7 +131,6 @@ export function useLocalPlayerData() {
     createUser,
     switchUser,
     recordSettledRound,
-    markActiveScoredRound,
     recordAbandonedRoundPenalty,
   }
 }

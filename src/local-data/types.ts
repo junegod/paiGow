@@ -2,7 +2,8 @@ import type { SeatId } from '@/rules-core/types'
 
 /**
  * 本机积分局的未完成登记。它属于系统防刷牌机制，
- * 不参与任何玩法规则，只用于刷新、关闭或中途返回时补扣离局分。
+ * 不参与任何玩法规则；当前只在用户确认强制离开时临时构造，
+ * 旧版本遗留到设置里的登记会在启动时清理但不会自动扣分。
  */
 export interface ActiveScoredRound {
   /** 归属用户 ID，避免切换用户后误扣到别人账上。 */
@@ -127,7 +128,7 @@ export interface AppSettings {
   updatedAt: string
   /** 钱包规则版本，用于旧本地数据一次性补齐默认 100 积分。 */
   walletVersion: number
-  /** 当前未完成的积分局，正常结算后会清空。 */
+  /** 旧版本保留字段。新版不再开局预登记，启动时会清理旧值。 */
   activeScoredRound?: ActiveScoredRound | null
 }
 
