@@ -145,7 +145,7 @@ Android 原生容器使用 Capacitor，应用名称为“打索子”，包名�
 
 应用图标源文件位于 `assets/app-icon/`。图标中的天牌和九点牌严格复用游戏内牌体比例、红白孔位、颜色和凹陷效果；Android 各密度图标已经写入对应的 `mipmap-*` 目录，Web 页签也使用同一套图标。
 
-构建环境需要 Node.js 22 或更高版本、JDK 17、Android Studio，以及 Android SDK Platform 36。首次使用前先安装前端依赖：
+构建环境需要 Node.js 22 或更高版本、JDK 21、Android Studio，以及 Android SDK Platform 36。首次使用前先安装前端依赖：
 
 ```bash
 pnpm install
