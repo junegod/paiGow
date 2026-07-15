@@ -15,17 +15,17 @@ export const BOT_DIFFICULTY_OPTIONS: Array<{
   {
     value: 'beginner',
     label: '入门',
-    description: '轻松练习',
+    description: '会犯新人错误',
   },
   {
     value: 'standard',
     label: '标准',
-    description: '默认推荐',
+    description: '稳健算牌',
   },
   {
     value: 'expert',
     label: '专家',
-    description: '深度算牌',
+    description: '模拟未知牌',
   },
 ]
 

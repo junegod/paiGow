@@ -1,12 +1,13 @@
 {
   "name": "da-suo-zi",
   "private": true,
-  "version": "1.1.0",
+  "version": "1.2.0",
   "license": "MIT",
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "audit:bots": "node scripts/runBotAudit.mjs",
+    "audit:difficulties": "node scripts/runBotDifficultyBenchmark.mjs",
     "build": "tsc -b && vite build",
     "android:build": "pnpm build && cap sync android && cap build android",
     "android:sync": "pnpm build && cap sync android",

@@ -51,7 +51,9 @@ jobs:
           pnpm test -- --run
 
       - name: 审计三档机器人
-        run: pnpm audit:bots
+        run: |
+          pnpm audit:bots
+          pnpm audit:difficulties
 
       - name: 构建并同步 Web 资源
         run: |

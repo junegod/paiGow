@@ -98,8 +98,9 @@ function orderSeatStateHand(
  * 前端控制器负责把 mock 服务桥接到 React 状态，并管理单真人对机器人模式。
  *
  * @param botDifficulty 当前单机机器人难度；变化后直接更新服务实例，不清空牌局。
+ * @param skipOpeningCeremony 是否跳过开局演出；只影响展示，不改变发牌和定庄结果。
  */
-export function useGameController(botDifficulty: BotDifficulty) {
+export function useGameController(botDifficulty: BotDifficulty, skipOpeningCeremony = false) {
   const apiRef = useRef(new MockMatchApi(undefined, botDifficulty))
   const [matchState, setMatchState] = useState<MatchState>(() => apiRef.current.getState())
   const [selectedCardIds, setSelectedCardIds] = useState<string[]>([])
@@ -254,6 +255,24 @@ export function useGameController(botDifficulty: BotDifficulty) {
       setIsHandOrganizing(false)
       handOrganizeAnimationTimerRef.current = null
     }, HAND_ORGANIZE_ANIMATION_MS)
+  }
+
+  /**
+   * 在开局展示结束后安排自动理牌。跳过动画时直接使用 startRound 返回的新局快照，
+   * 避免 React 状态尚未同步导致读取不到真人座位。
+   *
+   * @param seatState 需要自动整理的真人座位快照。
+   */
+  function scheduleHandAutoOrganize(seatState: SeatState | null): void {
+    if (!seatState) {
+      return
+    }
+
+    clearHandOrganizeTimers()
+    handOrganizeTimerRef.current = window.setTimeout(() => {
+      organizeSeatHand(seatState)
+      handOrganizeTimerRef.current = null
+    }, HAND_AUTO_ORGANIZE_DELAY_MS)
   }
 
   /**
@@ -556,9 +575,11 @@ export function useGameController(botDifficulty: BotDifficulty) {
     }
     const nextState = apiRef.current.startRound(options)
     const nextRound = nextState.currentRound
+    const humanSeatSnapshot = nextRound?.seats.find((seatState) =>
+      seatState.config.mode === 'human') ?? null
 
     setOpeningCeremony(
-      nextRound
+      nextRound && !skipOpeningCeremony
         ? {
             roundNumber: nextRound.roundNumber,
             dealerSeat: nextRound.firstLeader,
@@ -567,6 +588,10 @@ export function useGameController(botDifficulty: BotDifficulty) {
         : null,
     )
     syncState(nextState)
+
+    if (skipOpeningCeremony) {
+      scheduleHandAutoOrganize(humanSeatSnapshot)
+    }
   }
 
   /**
@@ -595,16 +620,7 @@ export function useGameController(botDifficulty: BotDifficulty) {
       seatState.config.mode === 'human') ?? null
 
     setOpeningCeremony(null)
-
-    if (!humanSeatSnapshot) {
-      return
-    }
-
-    clearHandOrganizeTimers()
-    handOrganizeTimerRef.current = window.setTimeout(() => {
-      organizeSeatHand(humanSeatSnapshot)
-      handOrganizeTimerRef.current = null
-    }, HAND_AUTO_ORGANIZE_DELAY_MS)
+    scheduleHandAutoOrganize(humanSeatSnapshot)
   }
 
   /**

@@ -7,6 +7,7 @@ import type { AudioPreferences } from '@/local-data/types'
 import {
   playGameSound,
   playSeatVoice,
+  setGameAudioPreferences,
 } from '@/ui/audio/gameAudio'
 
 export interface SettingsPanelProps {
@@ -46,26 +47,44 @@ export function SettingsPanel({
   onAudioPreferencesChange,
   onSkipOpeningCeremonyChange,
 }: SettingsPanelProps) {
+  const [effectEnabled, setEffectEnabled] = useState(audioPreferences.soundEffectsEnabled)
+  const [voiceEnabled, setVoiceEnabled] = useState(audioPreferences.voiceCallsEnabled)
   const [effectVolume, setEffectVolume] = useState(toPercentage(audioPreferences.soundEffectsVolume))
   const [voiceVolume, setVoiceVolume] = useState(toPercentage(audioPreferences.voiceCallsVolume))
 
   /** 外部设置加载或保存完成后，同步滑杆显示值。 */
   useEffect(() => {
+    setEffectEnabled(audioPreferences.soundEffectsEnabled)
+    setVoiceEnabled(audioPreferences.voiceCallsEnabled)
     setEffectVolume(toPercentage(audioPreferences.soundEffectsVolume))
     setVoiceVolume(toPercentage(audioPreferences.voiceCallsVolume))
-  }, [audioPreferences.soundEffectsVolume, audioPreferences.voiceCallsVolume])
+  }, [audioPreferences])
 
   /**
    * 保存滑杆当前值。拖动过程只更新视觉状态，松手或键盘改值后再写 IndexedDB，
    * 避免一次拖动产生大量本地事务。
    */
-  function saveVolume(channel: 'effect' | 'voice'): void {
+  function saveVolume(channel: 'effect' | 'voice', percentage: number): void {
     if (channel === 'effect') {
-      void onAudioPreferencesChange({ soundEffectsVolume: effectVolume / 100 })
+      void onAudioPreferencesChange({ soundEffectsVolume: percentage / 100 })
       return
     }
 
-    void onAudioPreferencesChange({ voiceCallsVolume: voiceVolume / 100 })
+    void onAudioPreferencesChange({ voiceCallsVolume: percentage / 100 })
+  }
+
+  /**
+   * 在 IndexedDB 异步保存完成前先更新内存播放器，保证开关和音量滑杆立即生效。
+   *
+   * @param patch 当前交互产生的声音设置变化。
+   */
+  function applyLiveAudioPatch(patch: Partial<AudioPreferences>): void {
+    setGameAudioPreferences({
+      soundEffectsEnabled: patch.soundEffectsEnabled ?? effectEnabled,
+      soundEffectsVolume: patch.soundEffectsVolume ?? effectVolume / 100,
+      voiceCallsEnabled: patch.voiceCallsEnabled ?? voiceEnabled,
+      voiceCallsVolume: patch.voiceCallsVolume ?? voiceVolume / 100,
+    })
   }
 
   return (
@@ -106,13 +125,16 @@ export function SettingsPanel({
             <button
               type="button"
               role="switch"
-              aria-checked={audioPreferences.soundEffectsEnabled}
+              aria-checked={effectEnabled}
               className="settings-switch"
               disabled={disabled}
               onClick={() => {
-                void onAudioPreferencesChange({
-                  soundEffectsEnabled: !audioPreferences.soundEffectsEnabled,
-                })
+                const nextEnabled = !effectEnabled
+                const patch = { soundEffectsEnabled: nextEnabled }
+
+                setEffectEnabled(nextEnabled)
+                applyLiveAudioPatch(patch)
+                void onAudioPreferencesChange(patch)
               }}
             >
               <span />
@@ -126,17 +148,21 @@ export function SettingsPanel({
               max="100"
               step="1"
               value={effectVolume}
-              disabled={disabled || !audioPreferences.soundEffectsEnabled}
-              onChange={(event) => setEffectVolume(Number(event.target.value))}
-              onPointerUp={() => saveVolume('effect')}
-              onKeyUp={() => saveVolume('effect')}
+              disabled={disabled || !effectEnabled}
+              onChange={(event) => {
+                const percentage = Number(event.target.value)
+                setEffectVolume(percentage)
+                applyLiveAudioPatch({ soundEffectsVolume: percentage / 100 })
+              }}
+              onPointerUp={(event) => saveVolume('effect', Number(event.currentTarget.value))}
+              onKeyUp={(event) => saveVolume('effect', Number(event.currentTarget.value))}
             />
             <em>{effectVolume}%</em>
           </label>
           <button
             type="button"
             className="settings-panel__preview"
-            disabled={!audioPreferences.soundEffectsEnabled}
+            disabled={!effectEnabled}
             onClick={() => playGameSound('cardPlay')}
           >
             试听落牌声
@@ -152,13 +178,16 @@ export function SettingsPanel({
             <button
               type="button"
               role="switch"
-              aria-checked={audioPreferences.voiceCallsEnabled}
+              aria-checked={voiceEnabled}
               className="settings-switch"
               disabled={disabled}
               onClick={() => {
-                void onAudioPreferencesChange({
-                  voiceCallsEnabled: !audioPreferences.voiceCallsEnabled,
-                })
+                const nextEnabled = !voiceEnabled
+                const patch = { voiceCallsEnabled: nextEnabled }
+
+                setVoiceEnabled(nextEnabled)
+                applyLiveAudioPatch(patch)
+                void onAudioPreferencesChange(patch)
               }}
             >
               <span />
@@ -172,17 +201,21 @@ export function SettingsPanel({
               max="100"
               step="1"
               value={voiceVolume}
-              disabled={disabled || !audioPreferences.voiceCallsEnabled}
-              onChange={(event) => setVoiceVolume(Number(event.target.value))}
-              onPointerUp={() => saveVolume('voice')}
-              onKeyUp={() => saveVolume('voice')}
+              disabled={disabled || !voiceEnabled}
+              onChange={(event) => {
+                const percentage = Number(event.target.value)
+                setVoiceVolume(percentage)
+                applyLiveAudioPatch({ voiceCallsVolume: percentage / 100 })
+              }}
+              onPointerUp={(event) => saveVolume('voice', Number(event.currentTarget.value))}
+              onKeyUp={(event) => saveVolume('voice', Number(event.currentTarget.value))}
             />
             <em>{voiceVolume}%</em>
           </label>
           <button
             type="button"
             className="settings-panel__preview"
-            disabled={!audioPreferences.voiceCallsEnabled}
+            disabled={!voiceEnabled}
             onClick={() => playSeatVoice(0, 'play')}
           >
             试听人物喊声

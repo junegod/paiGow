@@ -5,6 +5,7 @@ import {
   type ActionShape,
 } from '@/rules-variants/ji-an-da-suo-zi/botStrategyAnalysis'
 import { isLastTwoRewardAction } from '@/rules-variants/ji-an-da-suo-zi/botRewardEvaluation'
+import { estimateExpertHoldProbability } from '@/rules-variants/ji-an-da-suo-zi/botExpertSimulation'
 
 interface ExpertPosition {
   /** 当前合法动作对应的牌型摘要。 */
@@ -19,6 +20,8 @@ interface ExpertPosition {
   pierAfterAction: number
   /** 基于公开牌和自己手牌估算的动作安全度。 */
   security: number
+  /** 基于未知牌池抽样估算的实际守墩概率。 */
+  holdProbability: number
   /** 当前公开计分中对手的最高基础墩数。 */
   maximumOpponentPierCount: number
 }
@@ -76,10 +79,24 @@ function createExpertPosition(
     estimatedGain,
     pierAfterAction: self.wonPierCount + estimatedGain,
     security: action.intent === 'roll-dice' ? 0 : estimateLeadSecurity(context, shape),
+    holdProbability:
+      action.intent === 'roll-dice' ? 0 : estimateExpertHoldProbability(context, shape),
     maximumOpponentPierCount: Math.max(
       ...context.observation.opponents.map((opponent) => opponent.wonPierCount),
     ),
   }
+}
+
+/**
+ * 专家档使用未知牌池抽样修正粗粒度安全度。越接近残局，
+ * 真实守墩概率的权重越高，从而和标准档产生可感知的出牌差异。
+ */
+function scoreSimulatedControl(position: ExpertPosition): number {
+  const weight = position.endgamePosition ? 290 : 150
+  const probabilityScore = position.holdProbability * weight
+  const heuristicCorrection = (position.holdProbability - position.security) * 110
+
+  return probabilityScore + heuristicCorrection
 }
 
 /**
@@ -204,6 +221,7 @@ export function scoreExpertBotActionAdjustment(
   const position = createExpertPosition(context, action)
 
   return (
+    scoreSimulatedControl(position) +
     scoreEndgameControl(position) +
     scoreFinalTrickControl(context, action, position) +
     scoreRewardControl(context, action, position) +

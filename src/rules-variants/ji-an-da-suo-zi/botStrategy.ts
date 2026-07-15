@@ -14,9 +14,6 @@ interface ScoredAction {
   score: number
 }
 
-/** 入门难度允许进入稳定随机池的最大分差。 */
-const BEGINNER_HIGH_SCORE_WINDOW = 18
-
 /**
  * 将规则引擎生成的 PreparedAction 转换成最终 TurnAction。
  * 该函数只复制已选合法动作的意图和牌 id，不自行生成或修改动作内容。
@@ -115,8 +112,8 @@ function scoreAndSortLegalActions(
 
 /**
  * 按难度从规则引擎合法动作中选择候选。
- * 标准和专家档直接取最高分；入门档在与最高分接近的动作池中使用稳定哈希选择，
- * 既保留基础合理性，也避免每次都机械执行同一个启发式排序首项。
+ * 标准和专家档直接取最高分；入门档按稳定概率主动选择次优甚至较差动作，
+ * 保证它不会违规，但会出现新人常见的贪眼前、错过吃牌或浪费控制牌。
  *
  * @param context 当前脱敏决策上下文。
  * @param difficulty 当前机器人难度。
@@ -137,12 +134,24 @@ function chooseScoredAction(
     return bestScoredAction.action
   }
 
-  const highScoreCandidates = scoredActions.filter(
-    (item) => bestScoredAction.score - item.score <= BEGINNER_HIGH_SCORE_WINDOW,
-  )
-  const selectedIndex = createStableHash(createBeginnerChoiceKey(context)) % highScoreCandidates.length
+  if (scoredActions.length === 1) {
+    return bestScoredAction.action
+  }
 
-  return highScoreCandidates[selectedIndex].action
+  const choiceHash = createStableHash(createBeginnerChoiceKey(context))
+  const mistakeRoll = choiceHash % 100
+  let selectedIndex = 0
+
+  if (mistakeRoll >= 45 && mistakeRoll < 75) {
+    selectedIndex = Math.min(1, scoredActions.length - 1)
+  } else if (mistakeRoll >= 75 && mistakeRoll < 92) {
+    const nonBestCandidateCount = scoredActions.length - 1
+    selectedIndex = 1 + (Math.floor(choiceHash / 100) % nonBestCandidateCount)
+  } else if (mistakeRoll >= 92) {
+    selectedIndex = scoredActions.length - 1
+  }
+
+  return scoredActions[selectedIndex].action
 }
 
 /**
@@ -154,7 +163,7 @@ function chooseScoredAction(
  */
 function createHeuristicBotStrategy(difficulty: BotDifficulty): BotStrategy {
   return {
-    id: `information-safe-${difficulty}-v4`,
+    id: `information-safe-${difficulty}-v5`,
     difficulty,
     chooseAction(context) {
       const selectedAction = chooseScoredAction(context, difficulty)

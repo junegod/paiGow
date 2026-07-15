@@ -258,7 +258,8 @@ function App() {
   const localPlayerData = useLocalPlayerData()
   const botDifficulty =
     localPlayerData.snapshot?.botDifficulty ?? DEFAULT_BOT_DIFFICULTY
-  const controller = useGameController(botDifficulty)
+  const skipOpeningCeremony = localPlayerData.snapshot?.skipOpeningCeremony ?? false
+  const controller = useGameController(botDifficulty, skipOpeningCeremony)
   const [drawerState, setDrawerState] = useState<DrawerState>(null)
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
@@ -283,7 +284,6 @@ function App() {
   const activeLocalScore = activeLocalStats?.totalScore ?? null
   const audioPreferences =
     localPlayerData.snapshot?.audioPreferences ?? DEFAULT_GAME_AUDIO_PREFERENCES
-  const skipOpeningCeremony = localPlayerData.snapshot?.skipOpeningCeremony ?? false
   const canUseActionPanel =
     !controller.isOpeningCeremonyActive &&
     !controller.isTrickReviewing &&
@@ -368,16 +368,6 @@ function App() {
 
   useAppGestureGuards()
   useGameAudio(currentRound, controller.isOpeningCeremonyActive, audioPreferences)
-
-  /**
-   * 玩家关闭开局演出后，规则引擎仍先完成洗牌、定庄和发牌，
-   * UI 只跳过展示层并立即亮出自己的最终手牌。
-   */
-  useEffect(() => {
-    if (skipOpeningCeremony && controller.isOpeningCeremonyActive) {
-      controller.finishOpeningCeremony()
-    }
-  }, [controller, controller.isOpeningCeremonyActive, skipOpeningCeremony])
 
   /**
    * 每局结算后给当前本机用户记一条积分流水。服务层按局唯一键去重，
