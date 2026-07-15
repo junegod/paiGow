@@ -21,11 +21,10 @@ import type {
   TrickRecord,
 } from '@/rules-core/types'
 import {
+  DEFAULT_GAME_AUDIO_PREFERENCES,
   playGameSound,
-  preloadGameAudio,
-  unlockGameAudio,
-  type GameSoundName,
 } from '@/ui/audio/gameAudio'
+import { useGameAudio } from '@/ui/audio/useGameAudio'
 import { ActionPanel } from '@/ui/components/ActionPanel'
 import { CardStrip } from '@/ui/components/CardStrip'
 import { DiceBowlControl } from '@/ui/components/DiceBowlControl'
@@ -33,8 +32,10 @@ import { InspectorDrawer } from '@/ui/components/InspectorDrawer'
 import { LobbyPanel } from '@/ui/components/LobbyPanel'
 import { OpeningCeremonyLayer } from '@/ui/components/OpeningCeremonyLayer'
 import { SeatPanel } from '@/ui/components/SeatPanel'
+import { SettingsPanel } from '@/ui/components/SettingsPanel'
 import { SettlementPanel } from '@/ui/components/SettlementPanel'
 import { TrickArena } from '@/ui/components/TrickArena'
+import { useAppGestureGuards } from '@/ui/hooks/useAppGestureGuards'
 import {
   getDeadRewardCoverLabel,
   shouldCoverCardForDeadReward,
@@ -62,15 +63,6 @@ type LeaveConfirmState = {
 type InspectableTrick = {
   trick: TrickRecord | CurrentTrickState
   isCurrent: boolean
-}
-
-type RoundAudioSnapshot = {
-  roundNumber: number | null
-  phase: string
-  pendingDiceKey: string | null
-  totalPlayCount: number
-  completedTrickCount: number
-  settlementKey: string | null
 }
 
 function getSeatConfig(seatConfigs: SeatConfig[], seat: SeatId): SeatConfig {
@@ -218,75 +210,6 @@ function formatDoorName(door: string): string {
 }
 
 /**
- * 统计当前局已经发生的出牌次数，当前墩和历史墩都要纳入。
- * 音效只关心“有没有新牌落桌”，不参与任何规则判断。
- */
-function getRoundTotalPlayCount(round: RoundState): number {
-  const publicPlayCount = round.publicTrickLog.reduce(
-    (total, trick) => total + trick.plays.length,
-    0,
-  )
-  const currentPlayCount = round.currentTrick?.plays.length ?? 0
-
-  return publicPlayCount + currentPlayCount
-}
-
-/**
- * 读取最新一次出牌，用来区分正面出牌和背面弃牌音效。
- */
-function getLatestPlayedAction(round: RoundState): PlayedAction | null {
-  const currentPlays = round.currentTrick?.plays ?? []
-
-  if (currentPlays.length > 0) {
-    return currentPlays[currentPlays.length - 1]
-  }
-
-  const latestTrick = round.publicTrickLog[round.publicTrickLog.length - 1]
-
-  if (!latestTrick || latestTrick.plays.length === 0) {
-    return null
-  }
-
-  return latestTrick.plays[latestTrick.plays.length - 1]
-}
-
-/**
- * 把局面压缩成音效关注的快照，避免 UI 每次重渲染都重复播放声音。
- */
-function createRoundAudioSnapshot(round: RoundState | null): RoundAudioSnapshot {
-  if (!round) {
-    return {
-      roundNumber: null,
-      phase: 'none',
-      pendingDiceKey: null,
-      totalPlayCount: 0,
-      completedTrickCount: 0,
-      settlementKey: null,
-    }
-  }
-
-  return {
-    roundNumber: round.roundNumber,
-    phase: round.phase,
-    pendingDiceKey: round.pendingDice?.roll.key ?? null,
-    totalPlayCount: getRoundTotalPlayCount(round),
-    completedTrickCount: round.publicTrickLog.length,
-    settlementKey: round.settlement
-      ? `${round.roundNumber}:${round.settlement.summary}`
-      : null,
-  }
-}
-
-/**
- * 根据最新出牌判断应该播放正面落牌还是背面弃牌。
- */
-function getPlaySoundName(round: RoundState): GameSoundName {
-  const latestPlay = getLatestPlayedAction(round)
-
-  return latestPlay?.pattern.isOpen ? 'cardPlay' : 'cardDiscard'
-}
-
-/**
  * 抽屉里的单条出牌记录渲染器，兼容明牌与整局后翻开的背面弃牌。
  */
 function TrickPlayList({
@@ -338,12 +261,12 @@ function App() {
   const controller = useGameController(botDifficulty)
   const [drawerState, setDrawerState] = useState<DrawerState>(null)
   const [isMenuOpen, setIsMenuOpen] = useState(false)
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [isCurrentMatchScored, setIsCurrentMatchScored] = useState(true)
   const [leaveConfirmState, setLeaveConfirmState] = useState<LeaveConfirmState | null>(null)
   const [leaveConfirmError, setLeaveConfirmError] = useState<string | null>(null)
   const [isLeavePenaltySubmitting, setIsLeavePenaltySubmitting] = useState(false)
   const [lastVisibleDiceRoll, setLastVisibleDiceRoll] = useState<DiceRoll | null>(null)
-  const previousAudioSnapshotRef = useRef<RoundAudioSnapshot | null>(null)
   const recordedLocalRoundKeyRef = useRef<string | null>(null)
 
   const cardDefinitionMap = useMemo(
@@ -358,6 +281,9 @@ function App() {
       ? localPlayerData.snapshot.statsByUserId[localPlayerData.snapshot.activeUser.id] ?? null
       : null
   const activeLocalScore = activeLocalStats?.totalScore ?? null
+  const audioPreferences =
+    localPlayerData.snapshot?.audioPreferences ?? DEFAULT_GAME_AUDIO_PREFERENCES
+  const skipOpeningCeremony = localPlayerData.snapshot?.skipOpeningCeremony ?? false
   const canUseActionPanel =
     !controller.isOpeningCeremonyActive &&
     !controller.isTrickReviewing &&
@@ -440,25 +366,18 @@ function App() {
     }
   }, [shouldWarnBeforeLeavingScoredRound])
 
+  useAppGestureGuards()
+  useGameAudio(currentRound, controller.isOpeningCeremonyActive, audioPreferences)
+
   /**
-   * 浏览器移动端需要用户手势后才能播放声音；这里在首次点击或触摸时解锁，
-   * 同时提前预加载音效，减少第一次播放的延迟。
+   * 玩家关闭开局演出后，规则引擎仍先完成洗牌、定庄和发牌，
+   * UI 只跳过展示层并立即亮出自己的最终手牌。
    */
   useEffect(() => {
-    preloadGameAudio()
-
-    function handleFirstInteraction(): void {
-      unlockGameAudio()
+    if (skipOpeningCeremony && controller.isOpeningCeremonyActive) {
+      controller.finishOpeningCeremony()
     }
-
-    window.addEventListener('pointerdown', handleFirstInteraction, { passive: true })
-    window.addEventListener('keydown', handleFirstInteraction)
-
-    return () => {
-      window.removeEventListener('pointerdown', handleFirstInteraction)
-      window.removeEventListener('keydown', handleFirstInteraction)
-    }
-  }, [])
+  }, [controller, controller.isOpeningCeremonyActive, skipOpeningCeremony])
 
   /**
    * 每局结算后给当前本机用户记一条积分流水。服务层按局唯一键去重，
@@ -492,53 +411,6 @@ function App() {
     currentRound?.settlement,
     isCurrentMatchScored,
   ])
-
-  /**
-   * 根据局面变化自动播放音效，覆盖机器人出牌、掷骰、赢墩和结算。
-   * 这里只监听状态快照差异，不把音效逻辑写进规则引擎。
-   */
-  useEffect(() => {
-    const currentSnapshot = createRoundAudioSnapshot(currentRound)
-    const previousSnapshot = previousAudioSnapshotRef.current
-
-    previousAudioSnapshotRef.current = currentSnapshot
-
-    if (controller.isOpeningCeremonyActive) {
-      return
-    }
-
-    if (!currentRound) {
-      return
-    }
-
-    if (!previousSnapshot || previousSnapshot.roundNumber !== currentSnapshot.roundNumber) {
-      playGameSound('cardShuffle')
-      return
-    }
-
-    if (
-      currentSnapshot.pendingDiceKey &&
-      previousSnapshot.pendingDiceKey !== currentSnapshot.pendingDiceKey
-    ) {
-      playGameSound('diceRoll')
-    }
-
-    if (currentSnapshot.totalPlayCount > previousSnapshot.totalPlayCount) {
-      playGameSound(getPlaySoundName(currentRound))
-    }
-
-    if (currentSnapshot.completedTrickCount > previousSnapshot.completedTrickCount) {
-      playGameSound('trickWin')
-    }
-
-    if (
-      currentSnapshot.phase === 'settled' &&
-      currentSnapshot.settlementKey &&
-      previousSnapshot.settlementKey !== currentSnapshot.settlementKey
-    ) {
-      playGameSound('settlement')
-    }
-  }, [controller.isOpeningCeremonyActive, currentRound])
 
   /**
    * 选牌属于明确的手势反馈，直接播放轻触音。
@@ -824,6 +696,17 @@ function App() {
     controller.startRound()
   }
 
+  const settingsPanel = isSettingsOpen ? (
+    <SettingsPanel
+      audioPreferences={audioPreferences}
+      disabled={localPlayerData.status !== 'ready'}
+      skipOpeningCeremony={skipOpeningCeremony}
+      onClose={() => setIsSettingsOpen(false)}
+      onAudioPreferencesChange={localPlayerData.setAudioPreferences}
+      onSkipOpeningCeremonyChange={localPlayerData.setSkipOpeningCeremony}
+    />
+  ) : null
+
   if (!currentRound) {
     return (
       <main className="app-shell">
@@ -833,6 +716,7 @@ function App() {
           canConfigureSeats
           botDifficulty={botDifficulty}
           onBotDifficultyChange={localPlayerData.setBotDifficulty}
+          onOpenSettings={() => setIsSettingsOpen(true)}
           isBotDifficultyReady={localPlayerData.status === 'ready'}
           localUserPanel={{
             users: localPlayerData.snapshot?.users ?? [],
@@ -845,6 +729,7 @@ function App() {
             onSwitchUser: localPlayerData.switchUser,
           }}
         />
+        {settingsPanel}
       </main>
     )
   }
@@ -875,6 +760,16 @@ function App() {
               onClick={() => setIsMenuOpen(false)}
             />
             <div className="table-menu-dropdown" role="menu" aria-label="牌桌菜单">
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setIsMenuOpen(false)
+                  setIsSettingsOpen(true)
+                }}
+              >
+                设置
+              </button>
               <button
                 type="button"
                 role="menuitem"
@@ -1044,6 +939,7 @@ function App() {
       >
         {drawerMeta?.content}
       </InspectorDrawer>
+      {settingsPanel}
     </main>
   )
 }

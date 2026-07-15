@@ -8,7 +8,9 @@ import {
 } from '@/local-data/indexedDb'
 import {
   loadLocalDataSnapshot,
+  updateAudioPreferencesSetting,
   updateBotDifficultySetting,
+  updateSkipOpeningCeremonySetting,
 } from '@/local-data/localDataService'
 
 /**
@@ -104,5 +106,67 @@ describe('本地机器人难度设置', () => {
 
     expect(updatedSnapshot.botDifficulty).toBe('expert')
     expect(reloadedSnapshot.botDifficulty).toBe('expert')
+  })
+})
+
+describe('本地声音设置', () => {
+  beforeEach(() => {
+    installFreshIndexedDb()
+  })
+
+  it('旧设置缺少声音字段时启用默认音效并回写数据库', async () => {
+    await loadLocalDataSnapshot()
+    const currentSettings = await readRawSettings()
+    const {
+      soundEffectsEnabled: _removedEffectSwitch,
+      soundEffectsVolume: _removedEffectVolume,
+      voiceCallsEnabled: _removedVoiceSwitch,
+      voiceCallsVolume: _removedVoiceVolume,
+      ...legacySettings
+    } = currentSettings
+
+    await writeRawSettings(legacySettings)
+
+    const snapshot = await loadLocalDataSnapshot()
+    const repairedSettings = await readRawSettings()
+
+    expect(snapshot.audioPreferences).toEqual({
+      soundEffectsEnabled: true,
+      soundEffectsVolume: 0.86,
+      voiceCallsEnabled: true,
+      voiceCallsVolume: 0.92,
+    })
+    expect(repairedSettings.soundEffectsEnabled).toBe(true)
+    expect(repairedSettings.voiceCallsEnabled).toBe(true)
+  })
+
+  it('保存声音偏好时会限制音量范围并持久化开关', async () => {
+    await loadLocalDataSnapshot()
+
+    const updatedSnapshot = await updateAudioPreferencesSetting({
+      soundEffectsEnabled: false,
+      soundEffectsVolume: 2,
+      voiceCallsEnabled: false,
+      voiceCallsVolume: -1,
+    })
+    const reloadedSnapshot = await loadLocalDataSnapshot()
+
+    expect(updatedSnapshot.audioPreferences).toEqual({
+      soundEffectsEnabled: false,
+      soundEffectsVolume: 1,
+      voiceCallsEnabled: false,
+      voiceCallsVolume: 0,
+    })
+    expect(reloadedSnapshot.audioPreferences).toEqual(updatedSnapshot.audioPreferences)
+  })
+
+  it('保存跳过抓牌动画后重新加载仍保持开启', async () => {
+    await loadLocalDataSnapshot()
+
+    const updatedSnapshot = await updateSkipOpeningCeremonySetting(true)
+    const reloadedSnapshot = await loadLocalDataSnapshot()
+
+    expect(updatedSnapshot.skipOpeningCeremony).toBe(true)
+    expect(reloadedSnapshot.skipOpeningCeremony).toBe(true)
   })
 })

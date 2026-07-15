@@ -4,14 +4,16 @@ import {
   useState,
 } from 'react'
 
-import type { LocalDataSnapshot } from '@/local-data/types'
+import type { AudioPreferences, LocalDataSnapshot } from '@/local-data/types'
 import {
   createLocalUser,
   loadLocalDataSnapshot,
   recordAbandonedRoundPenaltyForUser,
   recordSettledRoundForUser,
   switchLocalUser,
+  updateAudioPreferencesSetting,
   updateBotDifficultySetting,
+  updateSkipOpeningCeremonySetting,
 } from '@/local-data/localDataService'
 import type {
   BotDifficulty,
@@ -103,6 +105,32 @@ export function useLocalPlayerData() {
   }
 
   /**
+   * 保存音效或人物喊声偏好，并立即刷新内存快照。
+   *
+   * @param patch 需要修改的声音字段；未传字段保持原值。
+   */
+  async function setAudioPreferences(patch: Partial<AudioPreferences>): Promise<void> {
+    try {
+      applySnapshot(await updateAudioPreferencesSetting(patch))
+    } catch (error) {
+      handleError(error)
+    }
+  }
+
+  /**
+   * 保存是否跳过开局抓牌演出。该选项属于设备偏好，不随用户切换。
+   *
+   * @param skipOpeningCeremony 是否跳过整段开局演出。
+   */
+  async function setSkipOpeningCeremony(skipOpeningCeremony: boolean): Promise<void> {
+    try {
+      applySnapshot(await updateSkipOpeningCeremonySetting(skipOpeningCeremony))
+    } catch (error) {
+      handleError(error)
+    }
+  }
+
+  /**
    * 结算后记录当前用户积分。服务层用局唯一键去重，重复调用不会重复加分。
    */
   async function recordSettledRound(matchState: MatchState, round: RoundState): Promise<void> {
@@ -146,6 +174,8 @@ export function useLocalPlayerData() {
     createUser,
     switchUser,
     setBotDifficulty,
+    setAudioPreferences,
+    setSkipOpeningCeremony,
     recordSettledRound,
     recordAbandonedRoundPenalty,
   }

@@ -1,5 +1,6 @@
 import type {
   ActiveScoredRound,
+  AudioPreferences,
   AppSettings,
   LocalDataSnapshot,
   MatchHistory,
@@ -144,7 +145,43 @@ function createAppSettings(activeUserId: string | null): AppSettings {
     updatedAt: createdAt,
     walletVersion: WALLET_VERSION,
     botDifficulty: DEFAULT_BOT_DIFFICULTY,
+    soundEffectsEnabled: true,
+    soundEffectsVolume: 0.86,
+    voiceCallsEnabled: true,
+    voiceCallsVolume: 0.92,
+    skipOpeningCeremony: false,
     activeScoredRound: null,
+  }
+}
+
+/**
+ * 把旧版本或异常数据中的音量限制到合法范围，避免播放器因非法音量抛错。
+ *
+ * @param value IndexedDB 中读取到的未知音量值。
+ * @param fallback 字段缺失或非法时采用的默认值。
+ * @returns 0 到 1 之间的有效音量。
+ */
+function normalizeVolume(value: unknown, fallback: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return fallback
+  }
+
+  return Math.min(1, Math.max(0, value))
+}
+
+/**
+ * 兼容旧版本设置并生成完整声音偏好。布尔字段只有明确为 false 时才关闭，
+ * 避免应用升级后因为旧数据缺少字段而意外静音。
+ *
+ * @param settings 本机保存的应用设置，首次启动时可能不存在。
+ * @returns 可直接供音频管理器使用的声音偏好。
+ */
+function normalizeAudioPreferences(settings?: Partial<AppSettings> | null): AudioPreferences {
+  return {
+    soundEffectsEnabled: settings?.soundEffectsEnabled !== false,
+    soundEffectsVolume: normalizeVolume(settings?.soundEffectsVolume, 0.86),
+    voiceCallsEnabled: settings?.voiceCallsEnabled !== false,
+    voiceCallsVolume: normalizeVolume(settings?.voiceCallsVolume, 0.92),
   }
 }
 
@@ -173,16 +210,24 @@ async function ensureLocalDataReady(database: IDBDatabase): Promise<void> {
 
   const activeUserExists = users.some((user) => user.id === settings?.activeUserId)
   const normalizedBotDifficulty = normalizeBotDifficulty(settings?.botDifficulty)
+  const normalizedAudioPreferences = normalizeAudioPreferences(settings)
   const shouldRepairSettings =
     !settings ||
     !activeUserExists ||
-    settings.botDifficulty !== normalizedBotDifficulty
+    settings.botDifficulty !== normalizedBotDifficulty ||
+    settings.soundEffectsEnabled !== normalizedAudioPreferences.soundEffectsEnabled ||
+    settings.soundEffectsVolume !== normalizedAudioPreferences.soundEffectsVolume ||
+    settings.voiceCallsEnabled !== normalizedAudioPreferences.voiceCallsEnabled ||
+    settings.voiceCallsVolume !== normalizedAudioPreferences.voiceCallsVolume ||
+    typeof settings.skipOpeningCeremony !== 'boolean'
 
   if (shouldRepairSettings) {
     await putLocalItem(database, LOCAL_DATA_STORES.settings, {
       ...(settings ?? createAppSettings(users[0].id)),
       activeUserId: activeUserExists ? settings?.activeUserId ?? users[0].id : users[0].id,
       botDifficulty: normalizedBotDifficulty,
+      ...normalizedAudioPreferences,
+      skipOpeningCeremony: settings?.skipOpeningCeremony === true,
       updatedAt: nowIsoString(),
       walletVersion: settings?.walletVersion ?? WALLET_VERSION,
     })
@@ -476,6 +521,8 @@ export async function loadLocalDataSnapshot(): Promise<LocalDataSnapshot> {
       activeUserId: activeUser?.id ?? null,
       activeUser,
       botDifficulty: normalizeBotDifficulty(settings?.botDifficulty),
+      audioPreferences: normalizeAudioPreferences(settings),
+      skipOpeningCeremony: settings?.skipOpeningCeremony === true,
       statsByUserId: calculateStatsByUserId(ledgers),
       recentHistories,
     }
@@ -558,6 +605,68 @@ export async function updateBotDifficultySetting(
     await putLocalItem(database, LOCAL_DATA_STORES.settings, {
       ...settings,
       botDifficulty: normalizeBotDifficulty(difficulty),
+      updatedAt: nowIsoString(),
+    })
+  } finally {
+    database.close()
+  }
+
+  return loadLocalDataSnapshot()
+}
+
+/**
+ * 更新设备级声音设置。调用方可以只修改其中一个字段，其余字段会保留当前值；
+ * 服务层统一做音量边界修正，避免 UI 或旧版本数据写入非法值。
+ *
+ * @param patch 需要修改的声音设置字段。
+ * @returns 写入后的完整本地数据快照。
+ */
+export async function updateAudioPreferencesSetting(
+  patch: Partial<AudioPreferences>,
+): Promise<LocalDataSnapshot> {
+  const database = await openLocalDatabase()
+
+  try {
+    const settings =
+      await getLocalItem(database, LOCAL_DATA_STORES.settings, LOCAL_SETTINGS_ID) ??
+      createAppSettings(null)
+    const nextAudioPreferences = normalizeAudioPreferences({
+      ...settings,
+      ...patch,
+    })
+
+    await putLocalItem(database, LOCAL_DATA_STORES.settings, {
+      ...settings,
+      ...nextAudioPreferences,
+      updatedAt: nowIsoString(),
+    })
+  } finally {
+    database.close()
+  }
+
+  return loadLocalDataSnapshot()
+}
+
+/**
+ * 更新是否跳过开局抓牌演出。该设置只影响动画展示，
+ * 发牌、定庄和规则状态仍由引擎完整执行。
+ *
+ * @param skipOpeningCeremony 是否在开局后直接进入手牌操作。
+ * @returns 写入后的完整本地数据快照。
+ */
+export async function updateSkipOpeningCeremonySetting(
+  skipOpeningCeremony: boolean,
+): Promise<LocalDataSnapshot> {
+  const database = await openLocalDatabase()
+
+  try {
+    const settings =
+      await getLocalItem(database, LOCAL_DATA_STORES.settings, LOCAL_SETTINGS_ID) ??
+      createAppSettings(null)
+
+    await putLocalItem(database, LOCAL_DATA_STORES.settings, {
+      ...settings,
+      skipOpeningCeremony,
       updatedAt: nowIsoString(),
     })
   } finally {

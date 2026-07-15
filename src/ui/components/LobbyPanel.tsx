@@ -43,6 +43,8 @@ interface LobbyPanelProps {
   botDifficulty: BotDifficulty
   /** 保存首页选择的机器人难度。 */
   onBotDifficultyChange: (difficulty: BotDifficulty) => void | Promise<void>
+  /** 打开应用设置；首页和牌桌共用同一设置弹窗。 */
+  onOpenSettings?: () => void
   /** 本地设置加载完成前禁止切换，避免旧设置被默认值覆盖。 */
   isBotDifficultyReady?: boolean
 }
@@ -72,6 +74,7 @@ export function LobbyPanel({
   localUserPanel,
   botDifficulty,
   onBotDifficultyChange,
+  onOpenSettings,
   isBotDifficultyReady = true,
 }: LobbyPanelProps) {
   const [selectedOpeningCardIds, setSelectedOpeningCardIds] = useState<string[]>([])
@@ -160,13 +163,24 @@ export function LobbyPanel({
               </div>
               <em>{activeScore} 积分</em>
             </div>
-            <button
-              type="button"
-              className="home-lobby__rules"
-              onClick={() => setIsRulesVisible(true)}
-            >
-              规则
-            </button>
+            <div className="home-lobby__top-actions">
+              {onOpenSettings ? (
+                <button
+                  type="button"
+                  className="home-lobby__utility"
+                  onClick={onOpenSettings}
+                >
+                  设置
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className="home-lobby__rules"
+                onClick={() => setIsRulesVisible(true)}
+              >
+                规则
+              </button>
+            </div>
           </header>
 
           <section className="home-lobby__stage">

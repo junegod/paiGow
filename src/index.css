@@ -26,6 +26,10 @@
 * {
   box-sizing: border-box;
   scrollbar-width: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 *::-webkit-scrollbar {
@@ -46,6 +50,25 @@ body {
   touch-action: manipulation;
 }
 
+/*
+ * 游戏界面不需要网页式复制、图片拖拽或长按搜索。仅文本输入控件恢复选择能力，
+ * 既消除 Android WebView 的蓝色选区和长按菜单，也不影响以后编辑昵称。
+ */
+img,
+svg,
+canvas {
+  -webkit-user-drag: none;
+  user-drag: none;
+}
+
+input:not([type='range']):not([type='radio']):not([type='checkbox']),
+textarea,
+[contenteditable='true'] {
+  -webkit-touch-callout: default;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
 button,
 input,
 textarea,
@@ -55,6 +78,13 @@ select {
 
 button {
   cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  appearance: none;
+}
+
+button:focus:not(:focus-visible) {
+  outline: none;
 }
 
 /* 页面外壳：桌面端居中显示手机牌桌，移动端铺满视口。 */
@@ -2735,6 +2765,13 @@ button.pai-card:focus-visible {
   gap: 8px;
 }
 
+.home-lobby__top-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .home-player-card {
   min-width: 0;
   border: 1px solid rgba(255, 228, 128, 0.28);
@@ -2850,7 +2887,8 @@ button.pai-card:focus-visible {
   font-weight: 1000;
 }
 
-.home-lobby__rules {
+.home-lobby__rules,
+.home-lobby__utility {
   flex: 0 0 auto;
   border: 1px solid rgba(255, 226, 124, 0.48);
   border-radius: 999px;
@@ -2863,6 +2901,16 @@ button.pai-card:focus-visible {
     linear-gradient(180deg, #fff19a, #daa82b);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.62),
+    0 10px 18px rgba(0, 0, 0, 0.24);
+}
+
+.home-lobby__utility {
+  color: #fff0b0;
+  background:
+    radial-gradient(circle at 30% 0%, rgba(255, 255, 255, 0.18), transparent 42%),
+    linear-gradient(180deg, rgba(13, 91, 58, 0.98), rgba(2, 46, 34, 0.99));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
     0 10px 18px rgba(0, 0, 0, 0.24);
 }
 
@@ -2997,12 +3045,14 @@ button.pai-card:focus-visible {
 }
 
 .home-action:hover,
-.home-lobby__rules:hover {
+.home-lobby__rules:hover,
+.home-lobby__utility:hover {
   filter: brightness(1.06);
 }
 
 .home-action:active,
-.home-lobby__rules:active {
+.home-lobby__rules:active,
+.home-lobby__utility:active {
   transform: translateY(2px) scale(0.99);
 }
 
@@ -3084,6 +3134,7 @@ button.pai-card:focus-visible {
   .home-lobby__brand,
   .home-player-card,
   .home-lobby__rules,
+  .home-lobby__utility,
   .home-lobby__actions,
   .home-lobby__disclaimer {
     animation: home-rise-in 560ms cubic-bezier(0.16, 1, 0.3, 1) both;

@@ -130,6 +130,16 @@ export interface AppSettings {
   walletVersion: number
   /** 单机机器人难度；三个机器人共用同一档位，默认标准。 */
   botDifficulty: BotDifficulty
+  /** 是否播放洗牌、落牌、骰子和结算等游戏音效。 */
+  soundEffectsEnabled: boolean
+  /** 游戏音效总音量，取值范围为 0 到 1。 */
+  soundEffectsVolume: number
+  /** 是否播放四个座位各自的出牌喊声。 */
+  voiceCallsEnabled: boolean
+  /** 人物喊声总音量，取值范围为 0 到 1。 */
+  voiceCallsVolume: number
+  /** 是否跳过每局开场的洗牌、定庄和抓牌演出。 */
+  skipOpeningCeremony: boolean
   /** 旧版本保留字段。新版不再开局预登记，启动时会清理旧值。 */
   activeScoredRound?: ActiveScoredRound | null
 }
@@ -160,8 +170,26 @@ export interface LocalDataSnapshot {
   activeUser: UserProfile | null
   /** 当前保存的机器人难度，首页和下一局共用。 */
   botDifficulty: BotDifficulty
+  /** 当前设备保存的游戏声音偏好。 */
+  audioPreferences: AudioPreferences
+  /** 是否跳过每局开场的抓牌动画。 */
+  skipOpeningCeremony: boolean
   /** 每个用户的积分统计。 */
   statsByUserId: Record<string, UserStats>
   /** 当前用户最近几局历史。 */
   recentHistories: MatchHistory[]
+}
+
+/**
+ * 游戏声音偏好。音效和人物喊声分成两个通道，方便玩家独立关闭或调节音量。
+ */
+export interface AudioPreferences {
+  /** 是否播放普通游戏音效。 */
+  soundEffectsEnabled: boolean
+  /** 普通游戏音效音量，取值范围为 0 到 1。 */
+  soundEffectsVolume: number
+  /** 是否播放人物喊声。 */
+  voiceCallsEnabled: boolean
+  /** 人物喊声音量，取值范围为 0 到 1。 */
+  voiceCallsVolume: number
 }
