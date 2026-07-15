@@ -7,6 +7,7 @@ import {
 } from 'react'
 
 import { useGameController } from '@/app/useGameController'
+import { DEFAULT_BOT_DIFFICULTY } from '@/app/botDifficulty'
 import { useLocalPlayerData } from '@/local-data/useLocalPlayerData'
 import type {
   CardDefinition,
@@ -331,8 +332,10 @@ function TrickPlayList({
 }
 
 function App() {
-  const controller = useGameController()
   const localPlayerData = useLocalPlayerData()
+  const botDifficulty =
+    localPlayerData.snapshot?.botDifficulty ?? DEFAULT_BOT_DIFFICULTY
+  const controller = useGameController(botDifficulty)
   const [drawerState, setDrawerState] = useState<DrawerState>(null)
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [isCurrentMatchScored, setIsCurrentMatchScored] = useState(true)
@@ -828,6 +831,9 @@ function App() {
           onStart={startScoredRound}
           onStartCustom={startCustomRound}
           canConfigureSeats
+          botDifficulty={botDifficulty}
+          onBotDifficultyChange={localPlayerData.setBotDifficulty}
+          isBotDifficultyReady={localPlayerData.status === 'ready'}
           localUserPanel={{
             users: localPlayerData.snapshot?.users ?? [],
             activeUser: localPlayerData.snapshot?.activeUser ?? null,

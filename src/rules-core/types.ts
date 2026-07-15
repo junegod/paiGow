@@ -9,6 +9,13 @@ export type SeatId = 0 | 1 | 2 | 3
 export type SeatMode = 'human' | 'bot'
 
 /**
+ * 机器人难度决定候选动作的评估深度与选择方式。
+ * 入门档允许在相近高分动作中做可复现的稳定随机，标准档沿用增强启发式，
+ * 专家档会进一步提高残局、赏、孵赏和最后一墩控制权的权重。
+ */
+export type BotDifficulty = 'beginner' | 'standard' | 'expert'
+
+/**
  * 打索子当前只使用长门、幺门、点子门三种门类。
  */
 export type DoorId = 'long' | 'yao' | 'point'
@@ -351,20 +358,216 @@ export interface ActionResult {
 }
 
 /**
+ * 机器人能够看到的公开牌型信息。
+ * 该模型刻意不复用完整 PlayPattern，避免暗牌的牌面、实例 id 或隐藏来源
+ * 通过策略上下文被意外透传；只有已经正面公开的动作才允许构造此对象。
+ */
+export interface BotPublicPattern {
+  /** 面向玩家展示的公开牌型名称。 */
+  label: string
+  /** 公开动作所属的基础牌型类别。 */
+  kind: PlayPattern['kind']
+  /** 公开动作参与大小比较的牌型组。 */
+  group: PlayGroup
+  /** 已经正面公开的牌定义 id。 */
+  cardDefinitionIds: string[]
+  /** 本次公开动作包含的牌张数。 */
+  cardCount: number
+  /** 规则引擎已经计算出的公开牌力。 */
+  strength: number
+  /** 公开动作的形成来源，暗牌来源不会进入机器人观察。 */
+  source: Exclude<PlayPattern['source'], 'hidden'>
+  /** 单门牌型公开后对应的门类。 */
+  door?: DoorId
+  /** 赏牌公开后对应的活赏或死赏模式。 */
+  rewardMode?: RewardMode
+}
+
+/**
+ * 机器人视角中的单次桌面出牌。
+ * 暗牌只保留座位和张数，publicPattern 与 publicCards 必须为空，
+ * 从类型和数据构造两层阻断机器人读取暗牌身份。
+ */
+export interface BotObservedPlay {
+  /** 执行动作的座位。 */
+  seat: SeatId
+  /** 当前动作是否已经以正面牌公开。 */
+  revealed: boolean
+  /** 本次动作实际使用的牌张数。 */
+  cardCount: number
+  /** 正面公开时可见的牌型；暗牌固定为 null。 */
+  publicPattern: BotPublicPattern | null
+  /** 正面公开时可见的牌实例；暗牌固定为空数组。 */
+  publicCards: CardInstance[]
+}
+
+/**
+ * 机器人视角中的已完成墩记录。
+ * 记录只包含桌面上所有玩家都能确认的赢家、墩数、赏状态和脱敏出牌，
+ * 不携带原始 TrickRecord 中可能保存的暗牌牌面。
+ */
+export interface BotObservedTrick {
+  /** 当前记录对应的局内墩序号。 */
+  trickIndex: number
+  /** 本墩领打座位。 */
+  leader: SeatId
+  /** 本墩最终赢家。 */
+  winner: SeatId
+  /** 本墩对应的基础墩数。 */
+  cardCount: number
+  /** 桌面明面上显示为领先的座位。 */
+  visibleWinningSeat: SeatId
+  /** 掷骰卖屁股时公开确定的门类。 */
+  forcedDoor?: DoorId
+  /** 本墩各座位的脱敏出牌记录。 */
+  plays: BotObservedPlay[]
+  /** 本墩存在赏时的赏牌发起座位。 */
+  rewardOwner?: SeatId
+  /** 本墩赏牌采用的公开模式。 */
+  rewardMode?: RewardMode
+  /** 赏牌是否被其他座位吃走。 */
+  rewardWasEaten?: boolean
+  /** 赏牌是否在最后两墩作为孵赏打出。 */
+  rewardWasLastTwo?: boolean
+}
+
+/**
+ * 机器人视角中的当前未完成墩。
+ * 当前目标牌型仅在目标已经明牌时提供；暗领和背面弃牌不会暴露牌面身份。
+ */
+export interface BotObservedCurrentTrick {
+  /** 当前进行到的局内墩序号。 */
+  trickIndex: number
+  /** 本墩领打座位。 */
+  leader: SeatId
+  /** 后续玩家需要跟随的牌张数。 */
+  expectedCardCount: number
+  /** 当前已经发生的脱敏出牌。 */
+  plays: BotObservedPlay[]
+  /** 当前桌面明面领先座位。 */
+  currentWinningSeat: SeatId
+  /** 当前可被明吃的公开目标牌型；暗领时固定为 null。 */
+  currentTargetPattern: BotPublicPattern | null
+  /** 掷骰卖屁股时公开确定的门类。 */
+  forcedDoor?: DoorId
+  /** 下一位需要响应的座位。 */
+  responseSeat: SeatId | null
+  /** 本墩是否由暗牌领出。 */
+  isHiddenLead: boolean
+  /** 当前赏牌发起座位。 */
+  rewardOwner?: SeatId
+  /** 当前赏牌公开模式。 */
+  rewardMode?: RewardMode
+  /** 当前赏牌是否属于最后两墩的孵赏。 */
+  rewardWasLastTwo?: boolean
+}
+
+/**
+ * 机器人自己的私有观察信息。
+ * 自己手牌可以完整读取，但已赢牌堆只提供统计值，避免其中夹带其他玩家暗出的牌面。
+ */
+export interface BotSelfObservation {
+  /** 机器人所在座位。 */
+  seat: SeatId
+  /** 机器人当前仍持有的完整手牌。 */
+  hand: CardInstance[]
+  /** 机器人当前已经赢得的基础墩数。 */
+  wonPierCount: number
+  /** 机器人当前已经赢得的完整回合数。 */
+  wonTrickCount: number
+}
+
+/**
+ * 机器人能够观察到的对手摘要。
+ * 对手只提供座位、剩余张数和公开计分统计，严禁出现 hand、wonTricks
+ * 或任何可以反推出暗牌牌面的字段。
+ */
+export interface BotOpponentObservation {
+  /** 对手所在座位。 */
+  seat: SeatId
+  /** 对手当前剩余手牌张数。 */
+  remainingCardCount: number
+  /** 对手当前已经赢得的基础墩数。 */
+  wonPierCount: number
+  /** 对手当前已经赢得的完整回合数。 */
+  wonTrickCount: number
+}
+
+/**
+ * 机器人能够读取的单局公开信息。
+ * 该对象由完整 RoundState 显式投影而来，不保留 seats、eventLog、原始暗牌记录
+ * 等可能泄露其他玩家私有信息的字段。
+ */
+export interface BotRoundObservation {
+  /** 当前局号。 */
+  roundNumber: number
+  /** 当前牌局阶段。 */
+  phase: MatchPhase
+  /** 当前应操作的座位。 */
+  currentSeat: SeatId | null
+  /** 本局首位领打座位。 */
+  firstLeader: SeatId
+  /** 上一墩赢家；尚未完成首墩时为空。 */
+  lastTrickWinner?: SeatId
+  /** 当前公开的掷骰仪式结果。 */
+  ceremony: DiceCeremony
+  /** 当前未完成墩的脱敏观察；尚未开墩时为空。 */
+  currentTrick: BotObservedCurrentTrick | null
+  /** 当前等待处理的公开骰子选择。 */
+  pendingDice: PendingDiceChoice | null
+  /** 最近一次公开骰子结果。 */
+  lastDiceRoll?: DiceRoll
+  /** 已完成墩的脱敏公开历史。 */
+  publicTrickLog: BotObservedTrick[]
+  /** 尚未在结算阶段翻开的暗牌动作数量。 */
+  hiddenPlaysPendingReveal: number
+  /** 已经公开确认的赏牌结果。 */
+  rewardOutcome?: RewardOutcome
+}
+
+/**
+ * 机器人决策时唯一允许读取的局面观察。
+ * 自己手牌与公开桌面信息分别存放，对手只能通过统计摘要出现，
+ * 因而策略实现无法从类型层访问完整 RoundState 或其他座位的真实手牌。
+ */
+export interface BotObservation {
+  /** 当前机器人所在座位。 */
+  seat: SeatId
+  /** 机器人自己的私有手牌与公开计分信息。 */
+  self: BotSelfObservation
+  /** 三位对手的脱敏统计摘要。 */
+  opponents: BotOpponentObservation[]
+  /** 当前单局的公开桌面状态。 */
+  round: BotRoundObservation
+}
+
+/**
  * 机器人策略输入上下文。
+ * 上下文只包含经过脱敏的观察与规则引擎生成的合法动作，策略不得接收或缓存
+ * 完整 RoundState、其他 SeatState 或任何暗牌牌面数据。
  */
 export interface BotDecisionContext {
-  round: RoundState
-  seat: SeatId
-  seatState: SeatState
+  /** 当前机器人允许读取的脱敏局面。 */
+  observation: BotObservation
+  /** 规则引擎为当前座位生成的全部合法动作。 */
   legalActions: PreparedAction[]
 }
 
 /**
- * 机器人策略是规则层可替换的一部分，方便未来扩多难度。
+ * 机器人策略是规则层可替换的一部分。
+ * 每个策略实例固定对应一个难度，并且只能从 BotDecisionContext 中的合法动作里选择。
  */
 export interface BotStrategy {
+  /** 策略实现的稳定标识。 */
   id: string
+  /** 当前策略实例对应的机器人难度。 */
+  difficulty: BotDifficulty
+  /**
+   * 从脱敏上下文的合法动作中选择一次最终动作。
+   *
+   * @param context 只包含自己手牌、公开信息和合法动作的决策上下文。
+   * @returns 可以直接提交给规则引擎的合法动作。
+   */
   chooseAction(context: BotDecisionContext): TurnAction
 }
 

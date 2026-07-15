@@ -1,5 +1,6 @@
 import { SeededRandom } from '@/rules-core/random'
 import type {
+  BotDifficulty,
   MatchState,
   PreparedAction,
   SeatConfig,
@@ -16,6 +17,8 @@ import {
   getSeatState,
   RULE_ENGINE_REVISION,
 } from '@/rules-variants/ji-an-da-suo-zi/engine'
+import { createBotDecisionContext } from '@/rules-variants/ji-an-da-suo-zi/botObservation'
+import { getHeuristicBotStrategy } from '@/rules-variants/ji-an-da-suo-zi/botStrategy'
 import { jiAnDaSuoZiRuleSet } from '@/rules-variants/ji-an-da-suo-zi/ruleSet'
 
 /**
@@ -33,11 +36,39 @@ export class MockMatchApi {
 
   private shouldUseRuntimeEntropy: boolean
 
-  public constructor(seed?: number) {
+  /** 当前机器人决策使用的难度，默认保持标准增强策略。 */
+  private botDifficulty: BotDifficulty
+
+  /**
+   * 创建纯前端牌局服务实例。
+   *
+   * @param seed 可选固定随机种子；不传时使用运行期熵生成种子。
+   * @param botDifficulty 机器人默认难度，未指定时使用 standard。
+   */
+  public constructor(seed?: number, botDifficulty: BotDifficulty = 'standard') {
     this.shouldUseRuntimeEntropy = seed === undefined
+    this.botDifficulty = botDifficulty
     const initialSeed = seed ?? createRuntimeSeed()
     this.rng = new SeededRandom(initialSeed)
     this.state = jiAnDaSuoZiRuleSet.createMatch(initialSeed, DEFAULT_SEAT_CONFIGS)
+  }
+
+  /**
+   * 修改后续机器人回合使用的默认难度，不重建或清空当前牌局。
+   *
+   * @param difficulty 后续机器人决策使用的难度。
+   */
+  public setBotDifficulty(difficulty: BotDifficulty): void {
+    this.botDifficulty = difficulty
+  }
+
+  /**
+   * 返回当前服务实例配置的机器人默认难度。
+   *
+   * @returns beginner、standard 或 expert 中的当前值。
+   */
+  public getBotDifficulty(): BotDifficulty {
+    return this.botDifficulty
   }
 
   /**
@@ -141,8 +172,12 @@ export class MockMatchApi {
 
   /**
    * 请求机器人为当前轮次自动决策。
+   * 完整 RoundState 只在本方法内用于构造脱敏上下文，策略本身无法读取其他玩家手牌或暗牌牌面。
+   *
+   * @param difficulty 可选单次难度覆盖；不传时使用服务实例当前配置的默认难度。
+   * @returns 执行动作后的牌局状态快照；当前不是机器人回合时原样返回。
    */
-  public requestBotMove(): MatchState {
+  public requestBotMove(difficulty: BotDifficulty = this.botDifficulty): MatchState {
     const round = this.state.currentRound
 
     if (!round || round.currentSeat === null) {
@@ -155,14 +190,14 @@ export class MockMatchApi {
       return this.getState()
     }
 
-    const botStrategy = jiAnDaSuoZiRuleSet.getBotStrategy()
+    const botStrategy = getHeuristicBotStrategy(difficulty)
     const legalActions = jiAnDaSuoZiRuleSet.listTurnActions(round, round.currentSeat)
-    const nextAction = botStrategy.chooseAction({
+    const decisionContext = createBotDecisionContext(
       round,
-      seat: round.currentSeat,
-      seatState,
+      round.currentSeat,
       legalActions,
-    })
+    )
+    const nextAction = botStrategy.chooseAction(decisionContext)
 
     return this.submitAction(nextAction)
   }

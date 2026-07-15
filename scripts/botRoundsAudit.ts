@@ -4,6 +4,7 @@ import path from 'node:path'
 import { advanceSeat, countBy } from '@/rules-core/collections'
 import { SeededRandom } from '@/rules-core/random'
 import type {
+  BotDifficulty,
   CardInstance,
   MatchState,
   PlayPattern,
@@ -19,6 +20,8 @@ import {
   DEFAULT_SEAT_CONFIGS,
   getCardDefinition,
 } from '@/rules-variants/ji-an-da-suo-zi/cardCatalog'
+import { createBotDecisionContext } from '@/rules-variants/ji-an-da-suo-zi/botObservation'
+import { getHeuristicBotStrategy } from '@/rules-variants/ji-an-da-suo-zi/botStrategy'
 import { getSeatState } from '@/rules-variants/ji-an-da-suo-zi/engine'
 import { LIVE_REWARD_EATERS } from '@/rules-variants/ji-an-da-suo-zi/patternCatalog'
 import { jiAnDaSuoZiRuleSet } from '@/rules-variants/ji-an-da-suo-zi/ruleSet'
@@ -28,6 +31,8 @@ interface BotAuditConfig {
   rounds: number
   /** 固定随机种子，保证发现的问题能复现到同一局同一手。 */
   seed: number
+  /** 当前要审计的机器人难度；未传时保持兼容并使用标准档。 */
+  difficulty?: BotDifficulty
   /** 审计产物目录，默认写入项目 artifacts/bot-audit。 */
   outputDir?: string
 }
@@ -603,6 +608,7 @@ async function writeAuditArtifacts(
  */
 export async function runBotRoundsAudit(config: BotAuditConfig): Promise<BotAuditReport> {
   const normalizedConfig: Required<BotAuditConfig> = {
+    difficulty: config.difficulty ?? 'standard',
     outputDir: config.outputDir ?? DEFAULT_OUTPUT_DIR,
     rounds: config.rounds,
     seed: config.seed,
@@ -620,6 +626,7 @@ export async function runBotRoundsAudit(config: BotAuditConfig): Promise<BotAudi
 
     logLines.push(JSON.stringify({
       type: 'round-start',
+      difficulty: normalizedConfig.difficulty,
       roundNumber: requireRound(match).roundNumber,
       firstLeader: requireRound(match).firstLeader,
       ceremony: requireRound(match).ceremony,
@@ -649,15 +656,14 @@ export async function runBotRoundsAudit(config: BotAuditConfig): Promise<BotAudi
       }
 
       auditCardConservation(round, step, errors)
-      const seatState = getSeatState(round, round.currentSeat)
       const legalActions = jiAnDaSuoZiRuleSet.listTurnActions(round, round.currentSeat)
       auditLegalActions(round, step, legalActions, errors)
-      const action = jiAnDaSuoZiRuleSet.getBotStrategy().chooseAction({
+      const decisionContext = createBotDecisionContext(
         round,
-        seat: round.currentSeat,
-        seatState,
+        round.currentSeat,
         legalActions,
-      })
+      )
+      const action = getHeuristicBotStrategy(normalizedConfig.difficulty).chooseAction(decisionContext)
       const legalAction = auditChosenAction(round, step, action, legalActions, errors)
       const beforeRound = structuredClone(round)
       const result = jiAnDaSuoZiRuleSet.submitAction(match, action, rng)

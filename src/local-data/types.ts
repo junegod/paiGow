@@ -1,4 +1,4 @@
-import type { SeatId } from '@/rules-core/types'
+import type { BotDifficulty, SeatId } from '@/rules-core/types'
 
 /**
  * 本机积分局的未完成登记。它属于系统防刷牌机制，
@@ -128,6 +128,8 @@ export interface AppSettings {
   updatedAt: string
   /** 钱包规则版本，用于旧本地数据一次性补齐默认 100 积分。 */
   walletVersion: number
+  /** 单机机器人难度；三个机器人共用同一档位，默认标准。 */
+  botDifficulty: BotDifficulty
   /** 旧版本保留字段。新版不再开局预登记，启动时会清理旧值。 */
   activeScoredRound?: ActiveScoredRound | null
 }
@@ -156,6 +158,8 @@ export interface LocalDataSnapshot {
   activeUserId: string | null
   /** 当前用户档案。 */
   activeUser: UserProfile | null
+  /** 当前保存的机器人难度，首页和下一局共用。 */
+  botDifficulty: BotDifficulty
   /** 每个用户的积分统计。 */
   statsByUserId: Record<string, UserStats>
   /** 当前用户最近几局历史。 */

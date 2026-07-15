@@ -1,0 +1,28 @@
+// Android 顶层构建文件，用于声明所有子项目和模块共享的构建配置。
+
+buildscript {
+
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:8.13.0'
+        classpath 'com.google.gms:google-services:4.4.4'
+
+        // 应用依赖必须声明在对应模块的 build.gradle 中，不能放在顶层构建脚本内。
+    }
+}
+
+apply from: "variables.gradle"
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+task clean(type: Delete) {
+    delete rootProject.buildDir
+}

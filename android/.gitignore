@@ -1,0 +1,100 @@
+# 基于 Android 官方常用忽略模板：https://github.com/github/gitignore/blob/HEAD/Android.gitignore
+
+# Android 构建产物
+*.apk
+*.aar
+*.ap_
+*.aab
+
+# ART 与 Dalvik 虚拟机生成文件
+*.dex
+
+# Java 编译产物
+*.class
+
+# 通用生成目录
+bin/
+gen/
+out/
+# 如需忽略自定义 release 目录，可以启用下一行。
+# release/
+
+# Gradle 本地缓存与构建目录
+.gradle/
+build/
+
+# 本机 Android SDK 路径等环境配置
+local.properties
+
+# Eclipse 生成的 ProGuard 目录
+proguard/
+
+# 日志文件
+*.log
+
+# Android Studio 导航编辑器临时文件
+.navigation/
+
+# Android Studio 捕获文件
+captures/
+
+# IntelliJ 与 Android Studio 工程私有配置
+*.iml
+.idea/workspace.xml
+.idea/tasks.xml
+.idea/gradle.xml
+.idea/assetWizardSettings.xml
+.idea/dictionaries
+.idea/libraries
+# Android Studio 3 及以上版本生成的缓存文件
+.idea/caches
+.idea/modules.xml
+# 如需保留导航编辑器中的元素位置，可以注释下一行。
+.idea/navEditor.xml
+
+# 签名密钥只能保存在本机或 CI 安全凭据中，禁止提交到仓库。
+*.jks
+*.keystore
+
+# Android Studio 2.2 及以上版本生成的外部原生构建目录
+.externalNativeBuild
+.cxx/
+
+# Google 服务配置按需决定是否纳入版本管理。
+# google-services.json
+
+# Freeline 构建工具生成文件
+freeline.py
+freeline/
+freeline_project_description.json
+
+# fastlane 自动化发布生成文件
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots
+fastlane/test_output
+fastlane/readme.md
+
+# Android Studio 版本控制配置
+vcs.xml
+
+# Android Lint 生成文件
+lint/intermediates/
+lint/generated/
+lint/outputs/
+lint/tmp/
+# lint/reports/
+
+# Android 性能分析转储文件
+*.hprof
+
+# Capacitor 为 Cordova 插件生成的 Android 模块
+capacitor-cordova-android-plugins
+
+# 从 dist 复制到原生工程的 Web 构建资源
+app/src/main/assets/public
+
+# Capacitor 同步时生成的配置文件
+app/src/main/assets/capacitor.config.json
+app/src/main/assets/capacitor.plugins.json
+app/src/main/res/xml/config.xml

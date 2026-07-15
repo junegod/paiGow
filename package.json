@@ -1,18 +1,23 @@
 {
   "name": "da-suo-zi",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "license": "MIT",
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "audit:bots": "node scripts/runBotAudit.mjs",
     "build": "tsc -b && vite build",
+    "android:build": "pnpm build && cap sync android && cap build android",
+    "android:sync": "pnpm build && cap sync android",
+    "android:open": "cap open android",
     "lint": "oxlint",
     "preview": "vite preview --host 0.0.0.0",
     "test": "vitest run"
   },
   "dependencies": {
+    "@capacitor/android": "8.4.1",
+    "@capacitor/core": "8.4.1",
     "@fontsource-variable/manrope": "^5.2.8",
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.6.1",
@@ -22,6 +27,7 @@
     "three": "^0.185.0"
   },
   "devDependencies": {
+    "@capacitor/cli": "8.4.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
@@ -30,6 +36,7 @@
     "@types/react-dom": "^19.2.3",
     "@types/three": "^0.185.0",
     "@vitejs/plugin-react": "^6.0.2",
+    "fake-indexeddb": "^6.2.5",
     "jsdom": "^29.1.1",
     "oxlint": "^1.69.0",
     "typescript": "~6.0.2",

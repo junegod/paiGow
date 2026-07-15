@@ -1,0 +1,86 @@
+name: 构建 Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-android-apk:
+    name: 构建并发布可安装 APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: 检出源码
+        uses: actions/checkout@v4
+
+      - name: 配置 pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: 配置 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: 配置 JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: 配置 Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: 安装 Android 36 构建工具
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+
+      - name: 安装前端依赖
+        run: pnpm install --frozen-lockfile
+
+      - name: 执行代码检查和单元测试
+        run: |
+          pnpm lint
+          pnpm test -- --run
+
+      - name: 审计三档机器人
+        run: pnpm audit:bots
+
+      - name: 构建并同步 Web 资源
+        run: |
+          pnpm build
+          pnpm exec cap sync android
+
+      - name: 构建可安装调试 APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+
+      - name: 整理安装包和校验文件
+        run: |
+          mkdir -p release
+          VERSION="${GITHUB_REF_NAME:-v1.0.0}"
+          cp android/app/build/outputs/apk/debug/app-debug.apk "release/da-suo-zi-${VERSION}.apk"
+          sha256sum "release/da-suo-zi-${VERSION}.apk" > "release/da-suo-zi-${VERSION}.apk.sha256"
+
+      - name: 上传工作流安装包
+        uses: actions/upload-artifact@v4
+        with:
+          name: da-suo-zi-android-apk
+          path: release/*
+          if-no-files-found: error
+
+      - name: 发布 GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/*
+          generate_release_notes: true

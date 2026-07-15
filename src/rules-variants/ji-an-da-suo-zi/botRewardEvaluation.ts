@@ -36,15 +36,13 @@ function isRewardShape(shape: ActionShape): boolean {
  */
 function countKnownUnavailableDefinitions(context: BotDecisionContext): Record<string, number> {
   const currentOpenDefinitionIds =
-    context.round.currentTrick?.plays.flatMap((play) =>
-      play.pattern.isOpen ? play.cards.map((card) => card.definitionId) : [],
+    context.observation.round.currentTrick?.plays.flatMap((play) =>
+      play.publicCards.map((card) => card.definitionId),
     ) ?? []
-  const historyOpenDefinitionIds = context.round.publicTrickLog.flatMap((trick) =>
-    trick.plays.flatMap((play) =>
-      play.pattern.isOpen ? play.cards.map((card) => card.definitionId) : [],
-    ),
+  const historyOpenDefinitionIds = context.observation.round.publicTrickLog.flatMap((trick) =>
+    trick.plays.flatMap((play) => play.publicCards.map((card) => card.definitionId)),
   )
-  const ownDefinitionIds = context.seatState.hand.map((card) => card.definitionId)
+  const ownDefinitionIds = context.observation.self.hand.map((card) => card.definitionId)
 
   return countBy([
     ...historyOpenDefinitionIds,
@@ -70,8 +68,8 @@ function canOpponentStillHoldPair(
  * 它已经没有能力拿对子吃活赏，风险会自然下降。
  */
 function estimateEligibleEaterSeatFactor(context: BotDecisionContext): number {
-  const eligibleSeatCount = context.round.seats.filter(
-    (seatState) => seatState.seat !== context.seat && seatState.hand.length >= 2,
+  const eligibleSeatCount = context.observation.opponents.filter(
+    (opponent) => opponent.remainingCardCount >= 2,
   ).length
 
   return eligibleSeatCount / 3
@@ -85,7 +83,11 @@ export function isLastTwoRewardAction(
   context: BotDecisionContext,
   shape: ActionShape,
 ): boolean {
-  return isRewardShape(shape) && shape.cardCount === 2 && context.seatState.hand.length === 2
+  return (
+    isRewardShape(shape) &&
+    shape.cardCount === 2 &&
+    context.observation.self.hand.length === 2
+  )
 }
 
 /**
@@ -123,7 +125,7 @@ function estimateRewardPierPressureScore(
   context: BotDecisionContext,
   shape: ActionShape,
 ): number {
-  const beforePierCount = context.seatState.wonPierCount
+  const beforePierCount = context.observation.self.wonPierCount
   const afterPierCount = beforePierCount + shape.cardCount
   const safeLineScore = beforePierCount < 4 && afterPierCount >= 4 ? 34 : 0
   const profitLineScore = beforePierCount < 5 && afterPierCount >= 5 ? 28 : 0

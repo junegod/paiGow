@@ -46,7 +46,7 @@
 - 洗牌抓牌：开局和下一局有洗牌、垒牌、抓牌的桌面仪式动画。
 - 回合复盘：点击赢墩数量或回合记录可以查看每一回合出的牌。
 - 规则页面：首页内置详细规则说明，并使用游戏内真实自绘牌做示例。
-- 机器人策略：机器人只从规则引擎枚举的合法动作中选择，并对最后一墩、活赏、死赏、墩数收益和吃赏风险做启发式判断。
+- 机器人策略：机器人不读取对手手牌或背面弃牌，只使用桌面公开信息决策；支持入门、标准、专家三档难度，默认使用标准难度。
 
 ## 技术栈
 
@@ -117,6 +117,7 @@ src/
     audio/                     # 游戏音效入口
 scripts/                       # 机器人审计脚本
 public/sounds/                 # 可替换音效素材
+assets/app-icon/               # 应用图标 SVG 源文件和 1024 像素母图
 打索子规则.md                   # 当前已整理的规则文档
 ```
 
@@ -137,3 +138,37 @@ public/sounds/                 # 可替换音效素材
 ## 开源协议
 
 本项目使用 [MIT License](./LICENSE) 开源。
+
+## Android App 构建
+
+Android 原生容器使用 Capacitor，应用名称为“打索子”，包名为 `com.junegod.dasuozi`，并固定为竖屏显示。原生工程位于 `android/`，可以直接使用 Android Studio 打开。
+
+应用图标源文件位于 `assets/app-icon/`。图标中的天牌和九点牌严格复用游戏内牌体比例、红白孔位、颜色和凹陷效果；Android 各密度图标已经写入对应的 `mipmap-*` 目录，Web 页签也使用同一套图标。
+
+构建环境需要 Node.js 22 或更高版本、JDK 17、Android Studio，以及 Android SDK Platform 36。首次使用前先安装前端依赖：
+
+```bash
+pnpm install
+```
+
+构建 Web 资源并同步到 Android 工程：
+
+```bash
+pnpm android:sync
+```
+
+使用 Android Studio 打开原生工程：
+
+```bash
+pnpm android:open
+```
+
+通过 Capacitor 执行完整 Android 构建：
+
+```bash
+pnpm android:build
+```
+
+`android:build` 会先执行现有 Vite 生产构建，再同步 `dist/` 并调用 Android 原生构建。仓库不保存签名密钥；如需发布签名包，应在本机 Android Studio 或 CI 的安全凭据中配置密钥。
+
+推送 `v*` 版本标签后，GitHub Actions 会自动执行代码检查、单元测试、三档机器人审计和 Android 构建，并把可直接安装的调试 APK 发布到对应 GitHub Release。调试 APK 适合当前单机版测试；正式上架应用商店前仍需配置长期保存的正式签名密钥。

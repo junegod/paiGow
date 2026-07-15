@@ -13,6 +13,7 @@ import { RULE_ENGINE_REVISION } from '@/rules-variants/ji-an-da-suo-zi/engine'
 import { arrangeJiAnDaSuoZiHandIds } from '@/rules-variants/ji-an-da-suo-zi/handArrangement'
 import { DICE_TOTAL_DISPLAY_MS } from '@/ui/diceTiming'
 import type {
+  BotDifficulty,
   CardInstance,
   MatchState,
   PreparedAction,
@@ -95,9 +96,11 @@ function orderSeatStateHand(
 
 /**
  * 前端控制器负责把 mock 服务桥接到 React 状态，并管理单真人对机器人模式。
+ *
+ * @param botDifficulty 当前单机机器人难度；变化后直接更新服务实例，不清空牌局。
  */
-export function useGameController() {
-  const apiRef = useRef(new MockMatchApi())
+export function useGameController(botDifficulty: BotDifficulty) {
+  const apiRef = useRef(new MockMatchApi(undefined, botDifficulty))
   const [matchState, setMatchState] = useState<MatchState>(() => apiRef.current.getState())
   const [selectedCardIds, setSelectedCardIds] = useState<string[]>([])
   const [handOrderBySeat, setHandOrderBySeat] = useState<Partial<Record<SeatId, string[]>>>({})
@@ -274,9 +277,17 @@ export function useGameController() {
       return
     }
 
-    apiRef.current = new MockMatchApi()
+    apiRef.current = new MockMatchApi(undefined, botDifficulty)
     syncState(apiRef.current.getState())
-  }, [])
+  }, [botDifficulty])
+
+  /**
+   * 首页难度设置加载或切换后同步到当前 mock 服务。
+   * 难度只改变后续机器人决策，不会重发牌或重置当前对局。
+   */
+  useEffect(() => {
+    apiRef.current.setBotDifficulty(botDifficulty)
+  }, [botDifficulty])
 
   useEffect(() => {
     if (currentRound?.phase !== 'playing' || currentSeat === null || !currentSeatState) {

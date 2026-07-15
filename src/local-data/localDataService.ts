@@ -17,12 +17,17 @@ import {
   putLocalItem,
 } from '@/local-data/indexedDb'
 import type {
+  BotDifficulty,
   MatchState,
   RoundState,
   SeatConfig,
   SeatId,
   SeatSettlement,
 } from '@/rules-core/types'
+import {
+  DEFAULT_BOT_DIFFICULTY,
+  normalizeBotDifficulty,
+} from '@/app/botDifficulty'
 import { calculateSettlement } from '@/rules-variants/ji-an-da-suo-zi/scoring'
 
 const DEFAULT_USER_ID = 'default-local-user'
@@ -138,6 +143,7 @@ function createAppSettings(activeUserId: string | null): AppSettings {
     createdAt,
     updatedAt: createdAt,
     walletVersion: WALLET_VERSION,
+    botDifficulty: DEFAULT_BOT_DIFFICULTY,
     activeScoredRound: null,
   }
 }
@@ -166,11 +172,17 @@ async function ensureLocalDataReady(database: IDBDatabase): Promise<void> {
   )
 
   const activeUserExists = users.some((user) => user.id === settings?.activeUserId)
+  const normalizedBotDifficulty = normalizeBotDifficulty(settings?.botDifficulty)
+  const shouldRepairSettings =
+    !settings ||
+    !activeUserExists ||
+    settings.botDifficulty !== normalizedBotDifficulty
 
-  if (!settings || !activeUserExists) {
+  if (shouldRepairSettings) {
     await putLocalItem(database, LOCAL_DATA_STORES.settings, {
       ...(settings ?? createAppSettings(users[0].id)),
-      activeUserId: users[0].id,
+      activeUserId: activeUserExists ? settings?.activeUserId ?? users[0].id : users[0].id,
+      botDifficulty: normalizedBotDifficulty,
       updatedAt: nowIsoString(),
       walletVersion: settings?.walletVersion ?? WALLET_VERSION,
     })
@@ -463,6 +475,7 @@ export async function loadLocalDataSnapshot(): Promise<LocalDataSnapshot> {
       users: sortedUsers,
       activeUserId: activeUser?.id ?? null,
       activeUser,
+      botDifficulty: normalizeBotDifficulty(settings?.botDifficulty),
       statsByUserId: calculateStatsByUserId(ledgers),
       recentHistories,
     }
@@ -516,6 +529,35 @@ export async function switchLocalUser(userId: string): Promise<LocalDataSnapshot
     await putLocalItem(database, LOCAL_DATA_STORES.settings, {
       ...(settings ?? createAppSettings(user.id)),
       activeUserId: user.id,
+      updatedAt: nowIsoString(),
+    })
+  } finally {
+    database.close()
+  }
+
+  return loadLocalDataSnapshot()
+}
+
+/**
+ * 更新单机机器人难度。难度属于设备级应用设置，不跟随用户切换，
+ * 当前牌局不会重建，新的难度会从下一次机器人决策开始生效。
+ *
+ * @param difficulty 用户在首页选择的入门、标准或专家难度。
+ * @returns 写入后的完整本地数据快照。
+ */
+export async function updateBotDifficultySetting(
+  difficulty: BotDifficulty,
+): Promise<LocalDataSnapshot> {
+  const database = await openLocalDatabase()
+
+  try {
+    const settings =
+      await getLocalItem(database, LOCAL_DATA_STORES.settings, LOCAL_SETTINGS_ID) ??
+      createAppSettings(null)
+
+    await putLocalItem(database, LOCAL_DATA_STORES.settings, {
+      ...settings,
+      botDifficulty: normalizeBotDifficulty(difficulty),
       updatedAt: nowIsoString(),
     })
   } finally {

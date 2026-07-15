@@ -1,10 +1,10 @@
 import type {
   BotDecisionContext,
+  BotRoundObservation,
+  BotSelfObservation,
   CardInstance,
   PlayGroup,
   PreparedAction,
-  RoundState,
-  SeatState,
 } from '@/rules-core/types'
 import { countBy } from '@/rules-core/collections'
 import {
@@ -76,21 +76,20 @@ function getActionCards(hand: CardInstance[], action: PreparedAction): CardInsta
  * 统计当前机器人已经能确认“别人不可能再拿着”的牌。
  * 公开明牌和自己的手牌都算已知信息；背面弃牌不算，因为当时没人知道牌面。
  */
-function countUnavailableDefinitions(round: RoundState, seatState: SeatState): Record<string, number> {
+function countUnavailableDefinitions(
+  round: BotRoundObservation,
+  self: BotSelfObservation,
+): Record<string, number> {
   const faceUpDefinitionIds = [
     ...round.publicTrickLog.flatMap((trick) =>
       trick.plays.flatMap((play) =>
-        play.pattern.isOpen
-          ? play.cards.map((card) => card.definitionId)
-          : [],
+        play.publicCards.map((card) => card.definitionId),
       ),
     ),
     ...(round.currentTrick?.plays.flatMap((play) =>
-      play.pattern.isOpen
-        ? play.cards.map((card) => card.definitionId)
-        : [],
+      play.publicCards.map((card) => card.definitionId),
     ) ?? []),
-    ...seatState.hand.map((card) => card.definitionId),
+    ...self.hand.map((card) => card.definitionId),
   ]
 
   return countBy(faceUpDefinitionIds)
@@ -183,7 +182,7 @@ function isLongComboUnbeatable(shape: ActionShape, unavailableCount: Record<stri
  * 识别一个合法动作的大致牌型。这里不重新判定合法性，只把合法动作转成策略可读的信息。
  */
 export function describeAction(context: BotDecisionContext, action: PreparedAction): ActionShape {
-  const cards = getActionCards(context.seatState.hand, action)
+  const cards = getActionCards(context.observation.self.hand, action)
   const definitionIds = cards.map((card) => card.definitionId)
   const cardCount = cards.length
 
@@ -307,13 +306,13 @@ export function describeAction(context: BotDecisionContext, action: PreparedActi
  * 机器人比较动作时会用“出牌前潜力 - 出牌后潜力”衡量这步有多伤结构。
  */
 function estimateHandPotential(
-  round: RoundState,
-  seatState: SeatState,
+  round: BotRoundObservation,
+  self: BotSelfObservation,
   cards: CardInstance[],
 ): number {
   const definitionCount = countBy(cards.map((card) => card.definitionId))
   const unavailableCount = countUnavailableDefinitions(round, {
-    ...seatState,
+    ...self,
     hand: cards,
   })
 
@@ -378,9 +377,10 @@ export function estimateStructureDamage(
   selectedCards: CardInstance[],
 ): number {
   const selectedCardIdSet = new Set(selectedCards.map((card) => card.id))
-  const remainingCards = context.seatState.hand.filter((card) => !selectedCardIdSet.has(card.id))
-  const beforePotential = estimateHandPotential(context.round, context.seatState, context.seatState.hand)
-  const afterPotential = estimateHandPotential(context.round, context.seatState, remainingCards)
+  const self = context.observation.self
+  const remainingCards = self.hand.filter((card) => !selectedCardIdSet.has(card.id))
+  const beforePotential = estimateHandPotential(context.observation.round, self, self.hand)
+  const afterPotential = estimateHandPotential(context.observation.round, self, remainingCards)
   const remainingCardCount = remainingCards.length
   const endgameMultiplier = remainingCardCount <= 3 ? 1.35 : remainingCardCount <= 5 ? 1.15 : 1
 
@@ -391,7 +391,10 @@ export function estimateStructureDamage(
  * 计算这手牌主动打出后大概率能否守住。分数越高，越像“能拿墩并拿到下一手”。
  */
 export function estimateLeadSecurity(context: BotDecisionContext, shape: ActionShape): number {
-  const unavailableCount = countUnavailableDefinitions(context.round, context.seatState)
+  const unavailableCount = countUnavailableDefinitions(
+    context.observation.round,
+    context.observation.self,
+  )
 
   if (shape.kind === 'reward-dead' || shape.kind === 'safe-singles') {
     return 1
@@ -428,18 +431,18 @@ export function estimateLeadSecurity(context: BotDecisionContext, shape: ActionS
  * 当前是否已经进入必须考虑最后一墩控制权的阶段。
  */
 export function isEndgame(context: BotDecisionContext, selectedCardCount = 0): boolean {
-  const remainingAfterAction = context.seatState.hand.length - selectedCardCount
-  return remainingAfterAction <= 3 || context.round.publicTrickLog.length >= 5
+  const remainingAfterAction = context.observation.self.hand.length - selectedCardCount
+  return remainingAfterAction <= 3 || context.observation.round.publicTrickLog.length >= 5
 }
 
 /**
  * 估算当前动作拿下以后，对该玩家基础墩数收益的影响。
  * 4 墩是保本线，所以从 3 到 4、4 到 5 的价值比纯早期抢 1 墩更高。
  */
-export function estimatePierProgressValue(seatState: SeatState, gainedPierCount: number): number {
-  const beforeDistance = Math.abs(4 - seatState.wonPierCount)
-  const afterDistance = Math.abs(4 - (seatState.wonPierCount + gainedPierCount))
-  const crossingSafeLineBonus = seatState.wonPierCount < 4 && seatState.wonPierCount + gainedPierCount >= 4
+export function estimatePierProgressValue(self: BotSelfObservation, gainedPierCount: number): number {
+  const beforeDistance = Math.abs(4 - self.wonPierCount)
+  const afterDistance = Math.abs(4 - (self.wonPierCount + gainedPierCount))
+  const crossingSafeLineBonus = self.wonPierCount < 4 && self.wonPierCount + gainedPierCount >= 4
     ? 18
     : 0
 

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 自适应图标裁切或动画露出边缘时，使用与主图一致的深绿色承接。 -->
+    <color name="ic_launcher_background">#0B3B2D</color>
+</resources>

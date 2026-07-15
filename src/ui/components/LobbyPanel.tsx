@@ -1,10 +1,12 @@
 import { useMemo, useState } from 'react'
 
 import type {
+  BotDifficulty,
   CardDefinition,
   CardInstance,
   StartRoundOptions,
 } from '@/rules-core/types'
+import { BOT_DIFFICULTY_OPTIONS } from '@/app/botDifficulty'
 import {
   CARD_DEFINITION_MAP,
   createDeck,
@@ -37,6 +39,12 @@ interface LobbyPanelProps {
   canConfigureSeats?: boolean
   /** 本机用户面板配置，只在初始大厅展示。 */
   localUserPanel?: LocalUserPanelProps
+  /** 当前保存的机器人难度，三个机器人共用。 */
+  botDifficulty: BotDifficulty
+  /** 保存首页选择的机器人难度。 */
+  onBotDifficultyChange: (difficulty: BotDifficulty) => void | Promise<void>
+  /** 本地设置加载完成前禁止切换，避免旧设置被默认值覆盖。 */
+  isBotDifficultyReady?: boolean
 }
 
 /**
@@ -62,6 +70,9 @@ export function LobbyPanel({
   onClose,
   canConfigureSeats = true,
   localUserPanel,
+  botDifficulty,
+  onBotDifficultyChange,
+  isBotDifficultyReady = true,
 }: LobbyPanelProps) {
   const [selectedOpeningCardIds, setSelectedOpeningCardIds] = useState<string[]>([])
   const [isRulesVisible, setIsRulesVisible] = useState(false)
@@ -183,6 +194,29 @@ export function LobbyPanel({
             </div>
 
             <div className="home-lobby__actions">
+              <fieldset className="home-difficulty" disabled={!isBotDifficultyReady}>
+                <legend>机器人难度</legend>
+                <div className="home-difficulty__options">
+                  {BOT_DIFFICULTY_OPTIONS.map((option) => (
+                    <label
+                      key={option.value}
+                      className={`home-difficulty__option ${botDifficulty === option.value ? 'home-difficulty__option--active' : ''}`}
+                    >
+                      <input
+                        type="radio"
+                        name="bot-difficulty"
+                        value={option.value}
+                        checked={botDifficulty === option.value}
+                        onChange={() => {
+                          void onBotDifficultyChange(option.value)
+                        }}
+                      />
+                      <strong>{option.label}</strong>
+                      <span>{option.description}</span>
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
               <button type="button" className="home-action home-action--primary" onClick={startSinglePlayer}>
                 单机开始
               </button>

@@ -1,0 +1,121 @@
+/*
+ * 首页机器人难度选择器独立维护，避免继续扩大历史主样式文件。
+ * 该区域只负责三档难度的视觉状态和新增控件导致的矮屏空间适配。
+ */
+.home-difficulty {
+  min-width: 0;
+  margin: 0;
+  border: 0;
+  padding: 0;
+}
+
+.home-difficulty legend {
+  width: 100%;
+  margin-bottom: 5px;
+  padding: 0;
+  color: rgba(255, 241, 185, 0.82);
+  font-size: 0.65rem;
+  font-weight: 1000;
+  letter-spacing: 0.12em;
+  text-align: center;
+}
+
+.home-difficulty__options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+  border: 1px solid rgba(255, 224, 116, 0.25);
+  border-radius: 16px;
+  padding: 4px;
+  background: rgba(0, 31, 23, 0.72);
+  box-shadow: inset 0 1px 8px rgba(0, 0, 0, 0.34);
+}
+
+.home-difficulty__option {
+  position: relative;
+  min-width: 0;
+  min-height: 40px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  display: grid;
+  place-content: center;
+  gap: 1px;
+  color: rgba(255, 255, 255, 0.6);
+  text-align: center;
+  cursor: pointer;
+  transition:
+    color 160ms ease,
+    border-color 160ms ease,
+    background 160ms ease,
+    transform 160ms ease;
+}
+
+/* 原生单选框保留语义和键盘能力，视觉状态由整块标签承担。 */
+.home-difficulty__option input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.home-difficulty__option strong {
+  font-size: 0.82rem;
+  line-height: 1.1;
+}
+
+.home-difficulty__option span {
+  overflow: hidden;
+  font-size: 0.54rem;
+  font-weight: 800;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.home-difficulty__option--active {
+  border-color: rgba(255, 231, 131, 0.74);
+  color: #34141d;
+  background:
+    radial-gradient(circle at 30% 0%, rgba(255, 255, 255, 0.72), transparent 48%),
+    linear-gradient(180deg, #ffef9b, #d6a026);
+  box-shadow: 0 5px 12px rgba(0, 0, 0, 0.24);
+}
+
+.home-difficulty__option:active {
+  transform: translateY(1px);
+}
+
+.home-difficulty:disabled {
+  opacity: 0.56;
+}
+
+/* 矮屏优先压缩装饰和按钮间距，确保三个入口仍在同一屏内完整显示。 */
+@media (max-height: 720px) {
+  .home-lobby__stage {
+    gap: 4px;
+  }
+
+  .home-lobby__brand h1 {
+    font-size: clamp(3.7rem, 20vw, 5.2rem);
+  }
+
+  .home-lobby__table-art {
+    min-height: 112px;
+  }
+
+  .home-lobby__actions {
+    gap: 5px;
+  }
+
+  .home-difficulty legend {
+    margin-bottom: 2px;
+  }
+
+  .home-difficulty__option {
+    min-height: 32px;
+  }
+
+  .home-action,
+  .home-action--disabled-wrap button {
+    min-height: 44px;
+  }
+}

@@ -1,0 +1,188 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title description">
+  <title id="title">打索子应用图标</title>
+  <desc id="description">新居村老者与游戏内同款天牌、九点牌组成的应用图标</desc>
+  <defs>
+    <!-- 背景延续游戏桌面的深绿色和旧金色，但减少装饰层级，确保小尺寸图标仍然清楚。 -->
+    <radialGradient id="background" cx="39%" cy="31%" r="84%">
+      <stop offset="0" stop-color="#245f45"/>
+      <stop offset="0.48" stop-color="#103f31"/>
+      <stop offset="1" stop-color="#031e1a"/>
+    </radialGradient>
+    <linearGradient id="halo" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f2d77d" stop-opacity="0.82"/>
+      <stop offset="0.55" stop-color="#b6872c" stop-opacity="0.38"/>
+      <stop offset="1" stop-color="#6d4914" stop-opacity="0.08"/>
+    </linearGradient>
+    <pattern id="woven" width="44" height="44" patternUnits="userSpaceOnUse" patternTransform="rotate(38)">
+      <path d="M0 0V44" stroke="#d7e9cf" stroke-opacity="0.035" stroke-width="5"/>
+    </pattern>
+
+    <!-- 人物使用多层肤色和局部阴影，不再使用大笑脸式的卡通五官。 -->
+    <radialGradient id="skin" cx="35%" cy="23%" r="84%">
+      <stop offset="0" stop-color="#e8b084"/>
+      <stop offset="0.44" stop-color="#bb7352"/>
+      <stop offset="0.78" stop-color="#804535"/>
+      <stop offset="1" stop-color="#512b25"/>
+    </radialGradient>
+    <linearGradient id="skinLight" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f1c09a" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#c57b5b" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="skinShade" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#5b2d27" stop-opacity="0"/>
+      <stop offset="1" stop-color="#3a201e" stop-opacity="0.58"/>
+    </linearGradient>
+    <linearGradient id="hair" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#d9d4c8"/>
+      <stop offset="0.28" stop-color="#85847f"/>
+      <stop offset="0.65" stop-color="#414342"/>
+      <stop offset="1" stop-color="#1c211f"/>
+    </linearGradient>
+    <linearGradient id="jacket" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#31596b"/>
+      <stop offset="0.52" stop-color="#163a4b"/>
+      <stop offset="1" stop-color="#092330"/>
+    </linearGradient>
+    <linearGradient id="collar" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#dec29d"/>
+      <stop offset="1" stop-color="#9d7252"/>
+    </linearGradient>
+
+    <!-- 下列颜色、凹孔和高光参数与游戏 PaiCard 组件保持一致。 -->
+    <linearGradient id="tileCore" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#131313"/>
+      <stop offset="0.18" stop-color="#060606"/>
+      <stop offset="0.7" stop-color="#010101"/>
+      <stop offset="1" stop-color="#070707"/>
+    </linearGradient>
+    <linearGradient id="tileBevel" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.2"/>
+      <stop offset="0.42" stop-color="#ffffff" stop-opacity="0.03"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0.5"/>
+    </linearGradient>
+    <radialGradient id="pipWell" cx="42%" cy="58%" r="68%">
+      <stop offset="0" stop-color="#111111"/>
+      <stop offset="0.68" stop-color="#050505"/>
+      <stop offset="1" stop-color="#000000"/>
+    </radialGradient>
+    <radialGradient id="redPip" cx="66%" cy="24%" r="86%">
+      <stop offset="0" stop-color="#ff7b65"/>
+      <stop offset="0.18" stop-color="#ff3122"/>
+      <stop offset="0.58" stop-color="#d70d0c"/>
+      <stop offset="1" stop-color="#720205"/>
+    </radialGradient>
+    <radialGradient id="whitePip" cx="66%" cy="24%" r="86%">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.24" stop-color="#fffdf4"/>
+      <stop offset="0.64" stop-color="#e7e0cf"/>
+      <stop offset="1" stop-color="#aca594"/>
+    </radialGradient>
+
+    <filter id="portraitShadow" x="-25%" y="-20%" width="165%" height="175%">
+      <feDropShadow dx="0" dy="23" stdDeviation="22" flood-color="#00110d" flood-opacity="0.72"/>
+    </filter>
+    <filter id="tileShadow" x="-35%" y="-25%" width="180%" height="180%">
+      <feDropShadow dx="3" dy="7" stdDeviation="4" flood-color="#00110d" flood-opacity="0.82"/>
+    </filter>
+
+    <!-- 红白孔均由黑色凹槽、漆面和右上角高光组成，与游戏内真实牌面一致。 -->
+    <g id="pipRed">
+      <circle r="11.02" fill="url(#pipWell)"/>
+      <circle r="10.22" fill="url(#redPip)"/>
+      <ellipse cx="2.5" cy="-3.5" rx="1.9" ry="2.8" fill="#ffd9ca" fill-opacity="0.56" transform="rotate(32 2.5 -3.5)"/>
+    </g>
+    <g id="pipWhite">
+      <circle r="11.02" fill="url(#pipWell)"/>
+      <circle r="10.22" fill="url(#whitePip)"/>
+      <ellipse cx="2.5" cy="-3.5" rx="1.9" ry="2.8" fill="#ffffff" fill-opacity="0.48" transform="rotate(32 2.5 -3.5)"/>
+    </g>
+
+    <!-- 天牌严格复用游戏 84×200 画布和 cardCatalog.ts 中的孔位。 -->
+    <symbol id="tileTian" viewBox="0 0 84 200">
+      <rect x="2" y="3" width="80" height="194" rx="8" fill="url(#tileCore)"/>
+      <rect x="3.35" y="4.35" width="77.3" height="191.3" rx="7" fill="none" stroke="url(#tileBevel)" stroke-width="1.2"/>
+      <use href="#pipWhite" x="25" y="28"/><use href="#pipRed" x="59" y="28"/>
+      <use href="#pipWhite" x="25" y="55"/><use href="#pipRed" x="59" y="55"/>
+      <use href="#pipWhite" x="25" y="82"/><use href="#pipRed" x="59" y="82"/>
+      <use href="#pipRed" x="25" y="118"/><use href="#pipWhite" x="59" y="118"/>
+      <use href="#pipRed" x="25" y="145"/><use href="#pipWhite" x="59" y="145"/>
+      <use href="#pipRed" x="25" y="172"/><use href="#pipWhite" x="59" y="172"/>
+    </symbol>
+
+    <!-- 图标固定展示第一张九点牌，即游戏里的上四红、下五白版本。 -->
+    <symbol id="tileNine" viewBox="0 0 84 200">
+      <rect x="2" y="3" width="80" height="194" rx="8" fill="url(#tileCore)"/>
+      <rect x="3.35" y="4.35" width="77.3" height="191.3" rx="7" fill="none" stroke="url(#tileBevel)" stroke-width="1.2"/>
+      <use href="#pipRed" x="25" y="28"/><use href="#pipRed" x="59" y="28"/>
+      <use href="#pipRed" x="25" y="82"/><use href="#pipRed" x="59" y="82"/>
+      <use href="#pipWhite" x="25" y="118"/><use href="#pipWhite" x="59" y="118"/>
+      <use href="#pipWhite" x="42" y="145"/>
+      <use href="#pipWhite" x="25" y="172"/><use href="#pipWhite" x="59" y="172"/>
+    </symbol>
+  </defs>
+
+  <!-- 方形底色交给 Android 和 iOS 进行系统圆角裁切，避免出现透明白角。 -->
+  <rect width="1024" height="1024" fill="url(#background)"/>
+  <rect width="1024" height="1024" fill="url(#woven)"/>
+  <circle cx="431" cy="430" r="354" fill="url(#halo)" opacity="0.42"/>
+  <path d="M143 273c71-134 194-199 337-181 105 14 194 68 256 155" fill="none" stroke="#efd06b" stroke-opacity="0.36" stroke-width="8" stroke-linecap="round"/>
+
+  <!-- 两张牌放在人物右肩后方，比例、孔位、颜色、凹陷和高光均来自游戏牌面。 -->
+  <g filter="url(#tileShadow)">
+    <use href="#tileTian" x="598" y="342" width="143" height="340" transform="rotate(-6 669.5 512)"/>
+    <use href="#tileNine" x="699" y="385" width="143" height="340" transform="rotate(7 770.5 555)"/>
+  </g>
+
+  <!-- 老者采用近景半身构图，五官收敛、神态沉稳，避免卡通娃娃感。 -->
+  <g filter="url(#portraitShadow)">
+    <path d="M74 1000c18-182 103-303 247-363 159-34 287 39 376 218 23 47 38 95 44 145Z" fill="url(#jacket)"/>
+    <path d="M229 690c41 103 97 154 169 154 75 0 135-52 180-155l75 91c-49 146-133 220-252 220-120 0-204-73-253-218Z" fill="url(#collar)"/>
+    <path d="M311 679c18 74 47 112 88 114 45-1 76-39 94-114l-39-42c-13 43-32 64-56 64-25 0-44-21-58-64Z" fill="#f2e5cf"/>
+
+    <!-- 颈部和耳朵先于脸部绘制，保证轮廓自然叠压。 -->
+    <path d="M326 590c5 85 29 137 72 156 45-19 70-72 74-158Z" fill="#8c4d3a"/>
+    <path d="M213 362c-37 12-54 51-43 101 10 43 35 68 72 64l5-153Z" fill="#a45c45"/>
+    <path d="M578 360c37 10 55 49 45 99-9 45-34 70-72 66l-6-153Z" fill="#824332"/>
+
+    <!-- 收窄颧骨和下颌，人物比上一版更接近成熟写实游戏头像。 -->
+    <path d="M238 230c28-103 91-159 180-158 94 1 159 57 184 165l-18 254c-11 92-49 172-105 220-31 27-61 40-89 40-31 0-63-14-96-43-54-49-89-128-99-221Z" fill="url(#skin)"/>
+    <path d="M242 240c6-75 49-131 116-157 72-29 146-8 196 49 21 24 34 55 41 93-47-32-95-51-143-57-72-10-142 14-210 72Z" fill="url(#hair)"/>
+    <path d="M267 205c47-31 98-46 153-43 62 3 117 23 163 61" fill="none" stroke="#d3cec2" stroke-opacity="0.38" stroke-width="9" stroke-linecap="round"/>
+    <path d="M313 153c36-32 78-49 126-50 41 0 77 12 108 37" fill="none" stroke="#f0ece3" stroke-opacity="0.16" stroke-width="12" stroke-linecap="round"/>
+    <path d="M249 233c4 45 2 84-6 117M584 224c9 48 12 90 8 127" fill="none" stroke="#d7d2c8" stroke-opacity="0.34" stroke-width="10" stroke-linecap="round"/>
+    <path d="M236 250c-13 102-8 201 14 298" fill="none" stroke="url(#skinLight)" stroke-width="24" stroke-linecap="round" opacity="0.48"/>
+    <path d="M461 167c104 30 139 126 123 324-11 112-46 184-103 217 49-94 68-192 58-294-8-89-34-171-78-247Z" fill="url(#skinShade)" opacity="0.66"/>
+
+    <!-- 眉眼使用狭长轮廓和眼窝阴影，减少大黑圆眼造成的卡通感。 -->
+    <path d="M270 337c37-25 75-31 114-16" fill="none" stroke="#4b2c28" stroke-width="15" stroke-linecap="round"/>
+    <path d="M430 319c43-15 83-8 120 20" fill="none" stroke="#422522" stroke-width="15" stroke-linecap="round"/>
+    <path d="M275 366c28 19 62 20 101 3-28 30-62 33-101 9Z" fill="#4d2b28" opacity="0.5"/>
+    <path d="M438 368c39 17 73 15 101-5-27 35-62 38-103 13Z" fill="#3d2422" opacity="0.55"/>
+    <path d="M286 366c23-16 51-17 82-2-21 22-49 25-82 7Z" fill="#1a1514"/>
+    <path d="M445 365c30-14 57-12 80 5-34 17-61 13-80-5Z" fill="#181313"/>
+    <ellipse cx="333" cy="366" rx="7" ry="9" fill="#271b18"/>
+    <ellipse cx="482" cy="367" rx="7" ry="9" fill="#241917"/>
+    <circle cx="330" cy="362" r="2.8" fill="#f7dfbd"/>
+    <circle cx="479" cy="363" r="2.8" fill="#f7dfbd"/>
+
+    <!-- 鼻梁、法令纹和眼角纹均使用低对比度线条，缩小时仍保留年龄感。 -->
+    <path d="M400 365c-10 52-15 98-14 138 12 15 29 19 51 10" fill="none" stroke="#754034" stroke-width="10" stroke-linecap="round"/>
+    <path d="M295 407c-18 4-33 14-45 29M536 406c18 4 33 14 45 29" fill="none" stroke="#7f4639" stroke-opacity="0.58" stroke-width="5" stroke-linecap="round"/>
+    <path d="M277 387c-18-8-34-8-49 1M543 386c18-8 34-8 49 1" fill="none" stroke="#713f36" stroke-opacity="0.44" stroke-width="4"/>
+    <path d="M282 491c21 24 39 51 53 80M529 490c-20 25-36 52-50 81" fill="none" stroke="#67382f" stroke-opacity="0.48" stroke-width="5" stroke-linecap="round"/>
+
+    <!-- 胡须采用短须加小山羊胡，嘴角仅轻微上扬，神态更稳重。 -->
+    <path d="M324 545c29-21 58-25 87-10 30-14 58-10 86 11" fill="none" stroke="#302322" stroke-width="15" stroke-linecap="round"/>
+    <path d="M344 568c43 17 87 18 132 2" fill="none" stroke="#562c29" stroke-width="8" stroke-linecap="round"/>
+    <path d="M365 589c26 32 55 46 86 42 24-4 43-18 58-43-48 18-96 19-144 1Z" fill="url(#hair)" opacity="0.9"/>
+    <path d="M303 531c26 7 47 20 64 39M510 529c-24 8-44 21-59 39" fill="none" stroke="#39302d" stroke-opacity="0.55" stroke-width="5"/>
+
+    <!-- 衣服只保留传统立领和少量金色扣子，避免图标底部过于复杂。 -->
+    <path d="M117 952c83-80 174-123 273-131M689 950c-74-81-162-124-264-130" fill="none" stroke="#54778a" stroke-opacity="0.54" stroke-width="13"/>
+    <circle cx="399" cy="848" r="10" fill="#e2bd4b"/>
+    <circle cx="399" cy="892" r="10" fill="#e2bd4b"/>
+  </g>
+
+  <!-- 下方旧金弧线用于收住视觉重心，避免和人物、牌面争抢注意力。 -->
+  <path d="M158 941c225 68 455 66 690-5" fill="none" stroke="#dfbc50" stroke-opacity="0.42" stroke-width="7" stroke-linecap="round"/>
+</svg>

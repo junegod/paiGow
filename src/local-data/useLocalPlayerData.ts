@@ -11,8 +11,10 @@ import {
   recordAbandonedRoundPenaltyForUser,
   recordSettledRoundForUser,
   switchLocalUser,
+  updateBotDifficultySetting,
 } from '@/local-data/localDataService'
 import type {
+  BotDifficulty,
   MatchState,
   RoundState,
 } from '@/rules-core/types'
@@ -88,6 +90,19 @@ export function useLocalPlayerData() {
   }
 
   /**
+   * 保存首页选择的机器人难度，并立即刷新本地快照。
+   *
+   * @param difficulty 入门、标准或专家难度。
+   */
+  async function setBotDifficulty(difficulty: BotDifficulty): Promise<void> {
+    try {
+      applySnapshot(await updateBotDifficultySetting(difficulty))
+    } catch (error) {
+      handleError(error)
+    }
+  }
+
+  /**
    * 结算后记录当前用户积分。服务层用局唯一键去重，重复调用不会重复加分。
    */
   async function recordSettledRound(matchState: MatchState, round: RoundState): Promise<void> {
@@ -130,6 +145,7 @@ export function useLocalPlayerData() {
     errorMessage,
     createUser,
     switchUser,
+    setBotDifficulty,
     recordSettledRound,
     recordAbandonedRoundPenalty,
   }

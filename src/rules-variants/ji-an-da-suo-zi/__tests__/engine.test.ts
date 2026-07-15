@@ -17,6 +17,7 @@ import {
   getCardDefinition,
   sortCardInstances,
 } from '@/rules-variants/ji-an-da-suo-zi/cardCatalog'
+import { createBotDecisionContext } from '@/rules-variants/ji-an-da-suo-zi/botObservation'
 import {
   createInitialMatch,
   finishRoundAndReveal,
@@ -522,12 +523,9 @@ describe('吉安打索子规则引擎', () => {
     expect(actionLabels).toContain('明打 天九')
     expect(legalActions.map((action) => action.intent)).toContain('roll-dice')
 
-    const botAction = heuristicBotStrategy.chooseAction({
-      round,
-      seat: 0,
-      seatState: round.seats[0],
-      legalActions,
-    })
+    const botAction = heuristicBotStrategy.chooseAction(
+      createBotDecisionContext(round, 0, legalActions),
+    )
 
     expect(botAction.intent).not.toBe('roll-dice')
   })
@@ -544,12 +542,9 @@ describe('吉安打索子规则引擎', () => {
       expect.arrayContaining(['打孵赏', '打死赏']),
     )
 
-    const botAction = heuristicBotStrategy.chooseAction({
-      round,
-      seat: 0,
-      seatState: round.seats[0],
-      legalActions,
-    })
+    const botAction = heuristicBotStrategy.chooseAction(
+      createBotDecisionContext(round, 0, legalActions),
+    )
 
     expect(botAction.intent).toBe('lead-reward-live')
     expect(selectedCardIdsMatchForTest(
@@ -582,12 +577,9 @@ describe('吉安打索子规则引擎', () => {
     expect(legalActions.map((action) => action.label)).toContain('打活赏')
     expect(legalActions.map((action) => action.label)).toContain('打死赏')
 
-    const botAction = heuristicBotStrategy.chooseAction({
-      round,
-      seat: 0,
-      seatState: round.seats[0],
-      legalActions,
-    })
+    const botAction = heuristicBotStrategy.chooseAction(
+      createBotDecisionContext(round, 0, legalActions),
+    )
 
     expect(botAction.intent).toBe('lead-reward-live')
   })
@@ -614,12 +606,9 @@ describe('吉安打索子规则引擎', () => {
 
     expect(legalActions.map((action) => action.label)).toContain('吃 九')
 
-    const botAction = heuristicBotStrategy.chooseAction({
-      round: afterLead,
-      seat: 1,
-      seatState: afterLead.seats[1],
-      legalActions,
-    })
+    const botAction = heuristicBotStrategy.chooseAction(
+      createBotDecisionContext(afterLead, 1, legalActions),
+    )
 
     expect(botAction.intent).toBe('respond-pass-hidden')
     expect(selectedCardIdsMatchForTest(
@@ -647,12 +636,9 @@ describe('吉安打索子规则引擎', () => {
     ).match.currentRound!
     afterLead.seats[1].config.mode = 'bot'
     const legalActions = listTurnActions(afterLead, 1)
-    const botAction = heuristicBotStrategy.chooseAction({
-      round: afterLead,
-      seat: 1,
-      seatState: afterLead.seats[1],
-      legalActions,
-    })
+    const botAction = heuristicBotStrategy.chooseAction(
+      createBotDecisionContext(afterLead, 1, legalActions),
+    )
 
     expect(botAction.intent).toBe('respond-eat')
     expect(selectedCardIdsMatchForTest(
@@ -734,12 +720,9 @@ describe('吉安打索子规则引擎', () => {
 
     expect(legalActions.map((action) => action.intent)).toEqual(['roll-dice'])
 
-    const botAction = heuristicBotStrategy.chooseAction({
-      round,
-      seat: 0,
-      seatState: round.seats[0],
-      legalActions,
-    })
+    const botAction = heuristicBotStrategy.chooseAction(
+      createBotDecisionContext(round, 0, legalActions),
+    )
 
     expect(botAction).toEqual({
       seat: 0,

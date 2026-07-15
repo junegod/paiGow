@@ -1,0 +1,3 @@
+// 请勿手工修改；每次执行 capacitor update 时都会重新生成本文件。
+include ':capacitor-android'
+project(':capacitor-android').projectDir = new File('../node_modules/.pnpm/@capacitor+android@8.4.1_@capacitor+core@8.4.1/node_modules/@capacitor/android/capacitor')
