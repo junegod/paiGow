@@ -8,6 +8,9 @@
     "dev": "vite --host 0.0.0.0",
     "audit:bots": "node scripts/runBotAudit.mjs",
     "audit:difficulties": "node scripts/runBotDifficultyBenchmark.mjs",
+    "online:server": "vite-node --config vite.config.ts server/main.ts",
+    "online:smoke": "node scripts/onlineSmoke.mjs",
+    "build:server": "vite build --ssr server/main.ts --outDir dist-server",
     "build": "tsc -b && vite build",
     "android:build": "pnpm build && cap sync android && cap build android",
     "android:sync": "pnpm build && cap sync android",
@@ -36,12 +39,16 @@
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@types/three": "^0.185.0",
+    "@types/ws": "^8.18.1",
     "@vitejs/plugin-react": "^6.0.2",
     "fake-indexeddb": "^6.2.5",
     "jsdom": "^29.1.1",
     "oxlint": "^1.69.0",
+    "tsx": "^4.20.3",
     "typescript": "~6.0.2",
+    "vite-node": "^6.0.0",
     "vite": "^8.1.0",
-    "vitest": "^4.1.9"
+    "vitest": "^4.1.9",
+    "ws": "^8.21.3"
   }
 }

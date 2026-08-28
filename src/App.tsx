@@ -7,6 +7,7 @@ import {
 } from 'react'
 
 import { useGameController } from '@/app/useGameController'
+import { useOnlineController } from '@/app/useOnlineController'
 import { DEFAULT_BOT_DIFFICULTY } from '@/app/botDifficulty'
 import { useLocalPlayerData } from '@/local-data/useLocalPlayerData'
 import type {
@@ -260,9 +261,13 @@ function App() {
     localPlayerData.snapshot?.botDifficulty ?? DEFAULT_BOT_DIFFICULTY
   const skipOpeningCeremony = localPlayerData.snapshot?.skipOpeningCeremony ?? false
   const controller = useGameController(botDifficulty, skipOpeningCeremony)
+  const online = useOnlineController(localPlayerData.snapshot?.activeUser?.nickname ?? '玩家')
+  const activeController = online.mode === 'match' ? online.controller : controller
   const [drawerState, setDrawerState] = useState<DrawerState>(null)
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
+  const [onlineRoomCode, setOnlineRoomCode] = useState('')
+  const [onlinePlayerName, setOnlinePlayerName] = useState('')
   const [isCurrentMatchScored, setIsCurrentMatchScored] = useState(true)
   const [leaveConfirmState, setLeaveConfirmState] = useState<LeaveConfirmState | null>(null)
   const [leaveConfirmError, setLeaveConfirmError] = useState<string | null>(null)
@@ -271,11 +276,12 @@ function App() {
   const recordedLocalRoundKeyRef = useRef<string | null>(null)
 
   const cardDefinitionMap = useMemo(
-    () => createCardDefinitionMap(controller.ruleSet.getAllCardDefinitions()),
-    [controller.ruleSet],
+    () => createCardDefinitionMap(activeController.ruleSet.getAllCardDefinitions()),
+    [activeController.ruleSet],
   )
 
-  const currentRound = controller.currentRound
+  const currentRound = activeController.currentRound
+  const currentMatchState = activeController.matchState
   const activeLocalUserId = localPlayerData.snapshot?.activeUserId ?? null
   const activeLocalStats =
     localPlayerData.snapshot?.activeUser
@@ -285,26 +291,26 @@ function App() {
   const audioPreferences =
     localPlayerData.snapshot?.audioPreferences ?? DEFAULT_GAME_AUDIO_PREFERENCES
   const canUseActionPanel =
-    !controller.isOpeningCeremonyActive &&
-    !controller.isTrickReviewing &&
-    !controller.isDiceReviewing &&
-    controller.visibleActionSeatState?.seat === controller.currentSeat &&
-    controller.currentSeatState?.config.mode === 'human'
-  const actionPanelSelectedCardIds = canUseActionPanel ? controller.selectedCardIds : []
-  const actionPanelPreparedActions = canUseActionPanel ? controller.selectionPreview.actions : []
+    !activeController.isOpeningCeremonyActive &&
+    !activeController.isTrickReviewing &&
+    !activeController.isDiceReviewing &&
+    activeController.visibleActionSeatState?.seat === activeController.currentSeat &&
+    activeController.currentSeatState?.config.mode === 'human'
+  const actionPanelSelectedCardIds = canUseActionPanel ? activeController.selectedCardIds : []
+  const actionPanelPreparedActions = canUseActionPanel ? activeController.selectionPreview.actions : []
   const rollActionForBowl =
     canUseActionPanel
       ? actionPanelPreparedActions.find((action) => action.intent === 'roll-dice') ?? null
       : null
-  const actionPanelHint = controller.isTrickReviewing
+  const actionPanelHint = activeController.isTrickReviewing
     ? '本回合出牌已完成，停留 2 秒方便看清牌面。'
-    : controller.isOpeningCeremonyActive
+    : activeController.isOpeningCeremonyActive
       ? '正在洗牌抓牌，抓完后只亮你的手牌。'
-    : controller.isDiceReviewing
+    : activeController.isDiceReviewing
       ? '骰子正在滚动并展示结果，稍等一下看清点数。'
     : rollActionForBowl
       ? '点右上角的碗掷骰。'
-    : controller.selectionPreview.hint
+    : activeController.selectionPreview.hint
   const activeDiceRoll =
     currentRound?.pendingDice?.roll ??
     (
@@ -326,7 +332,7 @@ function App() {
     isCurrentMatchScored &&
     activeLocalUserId &&
     currentRound?.phase === 'playing'
-      ? `${activeLocalUserId}:${controller.matchState.matchId}:${currentRound.roundNumber}`
+      ? `${activeLocalUserId}:${currentMatchState?.matchId}:${currentRound.roundNumber}`
       : null
   const shouldWarnBeforeLeavingScoredRound = Boolean(activeScoredRoundKey)
 
@@ -367,7 +373,7 @@ function App() {
   }, [shouldWarnBeforeLeavingScoredRound])
 
   useAppGestureGuards()
-  useGameAudio(currentRound, controller.isOpeningCeremonyActive, audioPreferences)
+  useGameAudio(currentRound, activeController.isOpeningCeremonyActive, audioPreferences)
 
   /**
    * 每局结算后给当前本机用户记一条积分流水。服务层按局唯一键去重，
@@ -376,6 +382,7 @@ function App() {
   useEffect(() => {
     if (
       !isCurrentMatchScored ||
+      !currentMatchState ||
       !currentRound?.settlement ||
       currentRound.phase !== 'settled' ||
       !activeLocalUserId
@@ -383,18 +390,18 @@ function App() {
       return
     }
 
-    const localRoundKey = `${activeLocalUserId}:${controller.matchState.matchId}:${currentRound.roundNumber}`
+    const localRoundKey = `${activeLocalUserId}:${currentMatchState.matchId}:${currentRound.roundNumber}`
 
     if (recordedLocalRoundKeyRef.current === localRoundKey) {
       return
     }
 
     recordedLocalRoundKeyRef.current = localRoundKey
-    void recordSettledRoundLocally(currentRound, controller.matchState)
+    void recordSettledRoundLocally(currentRound, currentMatchState)
   }, [
     activeLocalUserId,
-    controller.matchState,
-    controller.matchState.matchId,
+    currentMatchState,
+    currentMatchState?.matchId,
     currentRound,
     currentRound?.phase,
     currentRound?.roundNumber,
@@ -407,11 +414,11 @@ function App() {
    */
   function toggleCardSelectionWithSound(cardId: string): void {
     playGameSound('cardSelect')
-    controller.toggleCardSelection(cardId)
+    activeController.toggleCardSelection(cardId)
   }
 
   const drawerMeta = useMemo(() => {
-    if (!currentRound || !drawerState) {
+    if (!currentRound || !currentMatchState || !drawerState) {
       return null
     }
 
@@ -426,14 +433,14 @@ function App() {
         title: `第 ${drawerState.trickIndex} 回合详情`,
         subtitle:
           'winner' in trick
-            ? `赢家：${getSeatConfig(controller.matchState.seatConfigs, trick.winner).name}｜本回合 ${getTrickPierCount(trick)} 墩`
+            ? `赢家：${getSeatConfig(currentMatchState.seatConfigs, trick.winner).name}｜本回合 ${getTrickPierCount(trick)} 墩`
             : `仍在进行中，本回合 ${getTrickPierCount(trick)} 墩，当前明面最大为 ${trick.currentTargetPattern?.label ?? '无公开牌'}`,
         content: (
           <TrickPlayList
             plays={trick.plays}
             round={currentRound}
             cardDefinitions={cardDefinitionMap}
-            seatConfigs={controller.matchState.seatConfigs}
+            seatConfigs={currentMatchState.seatConfigs}
           />
         ),
       }
@@ -460,14 +467,14 @@ function App() {
                     <em>{isCurrent ? '当前' : `${getTrickPierCount(trick)} 墩`}</em>
                   </span>
                   <span className="drawer-history-tile__meta">
-                    领出 {getSeatConfig(controller.matchState.seatConfigs, trick.leader).name}
-                    ｜{formatTrickStatus(trick, controller.matchState.seatConfigs)}
+                    领出 {getSeatConfig(currentMatchState.seatConfigs, trick.leader).name}
+                    ｜{formatTrickStatus(trick, currentMatchState.seatConfigs)}
                   </span>
                   <span className="drawer-history-tile__summary">
                     {formatTrickPlaySummary(
                       trick,
                       currentRound,
-                      controller.matchState.seatConfigs,
+                      currentMatchState.seatConfigs,
                     ) || '还没有出牌记录'}
                   </span>
                   <span className="drawer-history-tile__cta">点开查看牌面</span>
@@ -530,7 +537,12 @@ function App() {
         </div>
       ),
     }
-  }, [cardDefinitionMap, controller.matchState.seatConfigs, currentRound, drawerState])
+  }, [
+    currentMatchState,
+    cardDefinitionMap,
+    currentRound,
+    drawerState,
+  ])
 
   /**
    * 判断菜单离开是否要走内部确认。只有正在进行的普通积分局才扣系统防刷牌分，
@@ -549,11 +561,11 @@ function App() {
     setIsCurrentMatchScored(true)
 
     if (action === 'restart-round') {
-      controller.startRound()
+      activeController.startRound()
       return
     }
 
-    controller.restartMatch()
+    activeController.restartMatch()
   }
 
   /**
@@ -601,7 +613,7 @@ function App() {
       return
     }
 
-    if (!currentRound || currentRound.phase !== 'playing') {
+    if (!currentMatchState || !currentRound || currentRound.phase !== 'playing') {
       executeMenuLeaveAction(leaveConfirmState.action)
       setLeaveConfirmState(null)
       return
@@ -611,7 +623,7 @@ function App() {
     setLeaveConfirmError(null)
 
     try {
-      await localPlayerData.recordAbandonedRoundPenalty(controller.matchState, currentRound)
+      await localPlayerData.recordAbandonedRoundPenalty(currentMatchState, currentRound)
       executeMenuLeaveAction(leaveConfirmState.action)
       setLeaveConfirmState(null)
     } catch {
@@ -640,6 +652,7 @@ function App() {
   async function persistCurrentSettlementForScore(): Promise<void> {
     if (
       !isCurrentMatchScored ||
+      !currentMatchState ||
       !currentRound?.settlement ||
       currentRound.phase !== 'settled' ||
       !activeLocalUserId
@@ -647,26 +660,26 @@ function App() {
       return
     }
 
-    const localRoundKey = `${activeLocalUserId}:${controller.matchState.matchId}:${currentRound.roundNumber}`
+    const localRoundKey = `${activeLocalUserId}:${currentMatchState.matchId}:${currentRound.roundNumber}`
 
     recordedLocalRoundKeyRef.current = localRoundKey
-    await localPlayerData.recordSettledRound(controller.matchState, currentRound)
+    await localPlayerData.recordSettledRound(currentMatchState, currentRound)
   }
 
   /**
    * 首页普通单机开始，结算会写入本机积分。
    */
-  function startScoredRound(options?: Parameters<typeof controller.startRound>[0]): void {
+  function startScoredRound(options?: Parameters<typeof activeController.startRound>[0]): void {
     setIsCurrentMatchScored(true)
-    controller.startRound(options)
+    activeController.startRound(options)
   }
 
   /**
    * 定制牌局用于验规则和赏钱，不写入积分流水。
    */
-  function startCustomRound(options?: Parameters<typeof controller.startRound>[0]): void {
+  function startCustomRound(options?: Parameters<typeof activeController.startRound>[0]): void {
     setIsCurrentMatchScored(false)
-    controller.startRound(options)
+    activeController.startRound(options)
   }
 
   /**
@@ -675,7 +688,7 @@ function App() {
   async function restartMatchFromSettlement(): Promise<void> {
     await persistCurrentSettlementForScore()
     setIsCurrentMatchScored(true)
-    controller.restartMatch()
+    activeController.restartMatch()
   }
 
   /**
@@ -683,7 +696,7 @@ function App() {
    */
   async function startNextRoundFromSettlement(): Promise<void> {
     await persistCurrentSettlementForScore()
-    controller.startRound()
+    activeController.startRound()
   }
 
   const settingsPanel = isSettingsOpen ? (
@@ -697,10 +710,83 @@ function App() {
     />
   ) : null
 
+  if (online.mode === 'lobby') {
+    return (
+      <main className="app-shell">
+        <section className="lobby-panel">
+          <div className="online-room">
+            <p className="lobby-panel__eyebrow">朋友局</p>
+            <h1>房间 {online.room?.roomCode ?? online.session?.roomCode}</h1>
+            <p className="online-room__status">
+              {online.connectionStatus === 'connected' ? '已连接服务器' : '正在连接服务器...'}
+              {online.notice ? `｜${online.notice}` : ''}
+            </p>
+            <p className="online-room__notice">
+              把房间码告诉朋友。人齐后由房主点击开始，空座位会用机器人补位。
+            </p>
+            <div className="online-room__seats">
+              {online.room?.seatConfigs.map((seatConfig) => (
+                <article
+                  key={seatConfig.seat}
+                  className={`online-room__seat ${online.room?.onlineSeats.includes(seatConfig.seat) ? 'online-room__seat--online' : ''}`}
+                >
+                  <strong>{seatConfig.name}</strong>
+                  <span>
+                    座位 {seatConfig.seat + 1}
+                    {online.room?.onlineSeats.includes(seatConfig.seat) ? '｜在线' : '｜等待'}
+                    {seatConfig.mode === 'bot' ? '｜机器人' : '｜真人'}
+                  </span>
+                </article>
+              ))}
+            </div>
+            {online.player?.seat === 0 && online.room && !online.room.isPlaying ? (
+              <>
+                <label className="online-room__bot-label">
+                  机器人名字（用空格分隔）
+                  <input
+                    value={online.botNames.join(' ')}
+                    onChange={(event) => online.saveBotNames(event.target.value.split(/\s+/).filter(Boolean))}
+                  />
+                </label>
+                <button type="button" className="home-action home-action--primary" onClick={online.startMatch}>
+                  开始牌局
+                </button>
+              </>
+            ) : null}
+            {online.error ? <p className="online-room__error">{online.error}</p> : null}
+            <button
+              type="button"
+              className="home-action"
+              onClick={() => {
+                online.leaveOnlineMode()
+                window.location.reload()
+              }}
+            >
+              离开房间
+            </button>
+          </div>
+        </section>
+      </main>
+    )
+  }
+
   if (!currentRound) {
     return (
       <main className="app-shell">
         <LobbyPanel
+          onCreateRoom={(playerName) => {
+            setOnlinePlayerName(playerName)
+            online.createRoom(playerName)
+          }}
+          onJoinRoom={(roomCode, playerName) => {
+            setOnlineRoomCode(roomCode)
+            setOnlinePlayerName(playerName)
+            online.joinRoom(roomCode, playerName)
+          }}
+          onlineConnectionStatus={online.mode === 'offline' ? online.connectionStatus : undefined}
+          onlineRoomCode={online.mode === 'offline' ? onlineRoomCode : undefined}
+          onlinePlayerName={online.mode === 'offline' ? onlinePlayerName : undefined}
+          onlineError={online.mode === 'offline' ? online.error : undefined}
           onStart={startScoredRound}
           onStartCustom={startCustomRound}
           canConfigureSeats
@@ -724,9 +810,19 @@ function App() {
     )
   }
 
+  if (!currentMatchState) {
+    return (
+      <main className="app-shell">
+        <section className="lobby-panel">
+          <p className="lobby-panel__summary">正在同步牌局状态...</p>
+        </section>
+      </main>
+    )
+  }
+
   return (
     <main className="app-shell">
-      <section className={`game-table ${controller.isOpeningCeremonyActive ? 'game-table--ceremony' : ''}`}>
+      <section className={`game-table ${activeController.isOpeningCeremonyActive ? 'game-table--ceremony' : ''}`}>
         <span className="table-corner table-corner--top-left" aria-hidden="true" />
         <span className="table-corner table-corner--top-right" aria-hidden="true" />
         <span className="table-corner table-corner--bottom-left" aria-hidden="true" />
@@ -784,36 +880,36 @@ function App() {
 
         <DiceBowlControl
           roll={bowlDisplayRoll}
-          rolling={controller.isDiceReviewing}
+          rolling={activeController.isDiceReviewing}
           rollAction={rollActionForBowl}
           resultLabel={activeDiceResultLabel}
-          onRoll={controller.submitPreparedAction}
+          onRoll={activeController.submitPreparedAction}
         />
 
         <section className="table-surface">
           <div className="table-surface__north">
             <SeatPanel
               seatState={currentRound.seats[2]}
-              isCurrent={controller.currentSeat === 2}
+              isCurrent={activeController.currentSeat === 2}
               isDealer={currentRound.firstLeader === 2}
-              score={getTableDisplayScore(controller.matchState, 2, activeLocalScore)}
+              score={getTableDisplayScore(currentMatchState, 2, activeLocalScore)}
               onInspectWonTricks={() => setDrawerState({ type: 'seat', seat: 2 })}
             />
           </div>
           <div className="table-surface__west">
             <SeatPanel
               seatState={currentRound.seats[3]}
-              isCurrent={controller.currentSeat === 3}
+              isCurrent={activeController.currentSeat === 3}
               isDealer={currentRound.firstLeader === 3}
-              score={getTableDisplayScore(controller.matchState, 3, activeLocalScore)}
+              score={getTableDisplayScore(currentMatchState, 3, activeLocalScore)}
               onInspectWonTricks={() => setDrawerState({ type: 'seat', seat: 3 })}
             />
           </div>
           <div className="table-surface__center">
             <TrickArena
               round={currentRound}
-              reviewTrick={controller.reviewTrick}
-              seatConfigs={controller.matchState.seatConfigs}
+              reviewTrick={activeController.reviewTrick}
+              seatConfigs={currentMatchState.seatConfigs}
               cardDefinitions={cardDefinitionMap}
               onInspectTrick={(trickIndex) => setDrawerState({ type: 'trick', trickIndex })}
             />
@@ -821,46 +917,46 @@ function App() {
           <div className="table-surface__east">
             <SeatPanel
               seatState={currentRound.seats[1]}
-              isCurrent={controller.currentSeat === 1}
+              isCurrent={activeController.currentSeat === 1}
               isDealer={currentRound.firstLeader === 1}
-              score={getTableDisplayScore(controller.matchState, 1, activeLocalScore)}
+              score={getTableDisplayScore(currentMatchState, 1, activeLocalScore)}
               onInspectWonTricks={() => setDrawerState({ type: 'seat', seat: 1 })}
             />
           </div>
           <div className="table-surface__south">
             <SeatPanel
               seatState={currentRound.seats[0]}
-              isCurrent={controller.currentSeat === 0}
+              isCurrent={activeController.currentSeat === 0}
               isDealer={currentRound.firstLeader === 0}
-              score={getTableDisplayScore(controller.matchState, 0, activeLocalScore)}
+              score={getTableDisplayScore(currentMatchState, 0, activeLocalScore)}
               onInspectWonTricks={() => setDrawerState({ type: 'seat', seat: 0 })}
             />
           </div>
         </section>
 
         <ActionPanel
-          seatState={controller.visibleActionSeatState}
+          seatState={activeController.visibleActionSeatState}
           cardDefinitions={cardDefinitionMap}
           selectedCardIds={actionPanelSelectedCardIds}
-          handCards={controller.visibleActionHandCards}
+          handCards={activeController.visibleActionHandCards}
           hint={actionPanelHint}
           roundNumber={currentRound.roundNumber}
           preparedActions={actionPanelPreparedActions}
           canInteract={canUseActionPanel}
-          isOrganizingHand={controller.isHandOrganizing}
+          isOrganizingHand={activeController.isHandOrganizing}
           useBowlForRoll={Boolean(rollActionForBowl)}
           onCardToggle={toggleCardSelectionWithSound}
-          onHandReorder={controller.reorderCurrentHand}
-          onOrganizeHand={controller.organizeHumanHand}
-          onActionSubmit={controller.submitPreparedAction}
+          onHandReorder={activeController.reorderCurrentHand}
+          onOrganizeHand={activeController.organizeHumanHand}
+          onActionSubmit={activeController.submitPreparedAction}
         />
 
-        {controller.openingCeremony ? (
+        {activeController.openingCeremony ? (
           <OpeningCeremonyLayer
-            round={controller.openingCeremony.round}
-            seatConfigs={controller.matchState.seatConfigs}
+            round={activeController.openingCeremony.round}
+            seatConfigs={currentMatchState.seatConfigs}
             cardDefinitions={cardDefinitionMap}
-            onDone={controller.finishOpeningCeremony}
+            onDone={activeController.finishOpeningCeremony}
           />
         ) : null}
 
@@ -914,7 +1010,7 @@ function App() {
       <div className="table-footer">
         <SettlementPanel
           round={currentRound}
-          seatConfigs={controller.matchState.seatConfigs}
+          seatConfigs={currentMatchState.seatConfigs}
           onInspectHistory={() => setDrawerState({ type: 'history' })}
           onNextRound={startNextRoundFromSettlement}
           onRestartMatch={restartMatchFromSettlement}

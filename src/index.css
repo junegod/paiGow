@@ -3020,6 +3020,175 @@ button.pai-card:focus-visible {
   gap: 9px;
 }
 
+/*
+ * 联机朋友局房间页沿用牌桌配色，房间码放大展示，
+ * 方便四个人围在一起报数字或截图分享。
+ */
+.online-room {
+  min-height: 0;
+  height: 100%;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: clamp(9px, 2svh, 16px);
+  padding: clamp(10px, 2.6vw, 18px);
+  border-radius: 22px;
+  text-align: center;
+  background:
+    radial-gradient(ellipse at 50% 28%, rgba(70, 212, 119, 0.34), transparent 38%),
+    linear-gradient(150deg, rgba(255, 255, 255, 0.08), transparent 40%),
+    rgba(0, 28, 20, 0.82);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 245, 190, 0.16),
+    inset 0 0 52px rgba(0, 0, 0, 0.28);
+}
+
+.online-room h1 {
+  margin: 0;
+  color: #fff3b4;
+  font-size: clamp(2.5rem, 13vw, 4.6rem);
+  line-height: 1;
+  letter-spacing: 0.08em;
+  text-shadow: 0 4px 0 rgba(104, 26, 25, 0.8);
+}
+
+.online-room__status,
+.online-room__notice,
+.online-room__error {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.online-room__status {
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.online-room__notice {
+  max-width: 32em;
+  color: rgba(255, 226, 121, 0.92);
+  line-height: 1.4;
+}
+
+.online-room__error {
+  color: #ff9c9c;
+}
+
+.online-room__seats {
+  width: min(100%, 330px);
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.online-room__seat {
+  display: grid;
+  gap: 3px;
+  padding: 8px;
+  border: 1px solid rgba(255, 226, 122, 0.24);
+  border-radius: 14px;
+  background: rgba(0, 25, 18, 0.64);
+}
+
+.online-room__seat strong {
+  overflow: hidden;
+  color: #fff6c7;
+  font-size: 0.88rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.online-room__seat span {
+  color: rgba(255, 255, 255, 0.64);
+  font-size: 0.66rem;
+  font-weight: 900;
+}
+
+.online-room__seat--online {
+  border-color: rgba(95, 255, 168, 0.5);
+  box-shadow: inset 0 0 18px rgba(65, 215, 135, 0.16);
+}
+
+.online-room__bot-label {
+  width: min(100%, 330px);
+  display: grid;
+  gap: 5px;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-align: left;
+}
+
+.online-room__bot-label input {
+  min-height: 38px;
+  border: 1px solid rgba(255, 226, 122, 0.34);
+  border-radius: 12px;
+  padding: 0 10px;
+  color: #fff6c7;
+  background: rgba(0, 25, 18, 0.68);
+  outline: none;
+}
+
+/*
+ * 首页朋友局表单保持大触控面积，
+ * 房间码输入只允许数字并支持老人手机直接输入。
+ */
+.online-form {
+  width: 100%;
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid rgba(255, 226, 122, 0.24);
+  border-radius: 18px;
+  background: rgba(0, 25, 18, 0.56);
+}
+
+.online-form__title {
+  margin: 0;
+  color: #ffe077;
+  font-size: 0.82rem;
+  font-weight: 1000;
+  text-align: center;
+}
+
+.online-form__input {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid rgba(255, 226, 122, 0.32);
+  border-radius: 14px;
+  padding: 0 12px;
+  color: #fff6c7;
+  background: rgba(0, 25, 18, 0.7);
+  outline: none;
+}
+
+.online-form__join {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 86px;
+  gap: 7px;
+}
+
+.online-form__join .home-action {
+  min-height: 44px;
+  font-size: 0.9rem;
+}
+
+.online-form__status,
+.online-form__error {
+  margin: 0;
+  font-size: 0.7rem;
+  font-weight: 900;
+  text-align: center;
+}
+
+.online-form__status {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.online-form__error {
+  color: #ff9c9c;
+}
+
 .home-action,
 .home-action--disabled-wrap button {
   width: 100%;

@@ -1,0 +1,126 @@
+/*
+ * PaiGow 联机后端独立发布流水线。
+ *
+ * Jenkins 构建单文件 Node.js 服务，并发布到固定后端节点 172.18.1.58。
+ * 与前端发布解耦，避免静态资源更新时误重启正在进行的联机牌局。
+ */
+pipeline {
+    agent any
+
+    options {
+        timestamps()
+        disableConcurrentBuilds()
+        buildDiscarder(logRotator(numToKeepStr: '20', artifactNumToKeepStr: '10'))
+    }
+
+    parameters {
+        string(name: 'NODE_VERSION', defaultValue: '22.22.2', description: 'Jenkins 服务器 nvm 中用于构建后端的 Node.js 版本。')
+        string(name: 'NVM_SCRIPT', defaultValue: '/root/.nvm/nvm-0.38.0/nvm.sh', description: 'Jenkins 服务器上的 nvm 初始化脚本路径。')
+        string(name: 'NPM_REGISTRY', defaultValue: 'https://registry.npmmirror.com', description: 'pnpm 安装依赖时使用的 npm 镜像地址。')
+        string(name: 'ONLINE_HOST', defaultValue: '172.18.1.58', description: '联机后端部署节点。')
+        string(name: 'ONLINE_PORT', defaultValue: '8787', description: '联机后端监听端口。')
+        string(name: 'ONLINE_SERVICE_NAME', defaultValue: 'paigow-online', description: '服务器上的 systemd 服务名。')
+        string(name: 'ONLINE_DEPLOY_ROOT', defaultValue: '/data/project/online/paigow', description: '服务器上的后端应用目录。')
+        string(name: 'REMOTE_NODE_BIN', defaultValue: '/usr/local/bin/node', description: '目标服务器 Node.js 可执行文件路径。')
+        booleanParam(name: 'SKIP_DEPLOY', defaultValue: false, description: '只构建归档，不发布或重启服务。')
+    }
+
+    environment {
+        CI = 'true'
+        PACKAGE_NAME = 'paigow-online.tar.gz'
+    }
+
+    stages {
+        stage('拉取代码') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('安装依赖') {
+            steps {
+                sh label: '安装 pnpm 依赖', script: '''#!/usr/bin/env bash
+set -euo pipefail
+
+# 后端复用仓库锁文件，保证 Jenkins 构建和本地验证使用相同规则引擎与依赖版本。
+source "${NVM_SCRIPT}"
+nvm use "${NODE_VERSION}"
+pnpm install --no-frozen-lockfile --registry="${NPM_REGISTRY}"
+'''
+            }
+        }
+
+        stage('测试并构建后端') {
+            steps {
+                sh label: '执行测试并构建单文件服务', script: '''#!/usr/bin/env bash
+set -euo pipefail
+
+# 服务端承载权威牌局状态，发版前强制跑规则引擎和房间服务测试。
+source "${NVM_SCRIPT}"
+nvm use "${NODE_VERSION}"
+pnpm lint
+pnpm test -- --run
+pnpm build:server
+test -f dist-server/main.js
+'''
+                archiveArtifacts artifacts: 'dist-server/main.js', fingerprint: true, onlyIfSuccessful: true
+            }
+        }
+
+        stage('发布后端服务') {
+            when {
+                expression { return !params.SKIP_DEPLOY }
+            }
+            steps {
+                sh label: '同步并重启联机服务', script: '''#!/usr/bin/env bash
+set -euo pipefail
+
+# 本地打包不包含 node_modules，目标服务器只需要固定版本 Node.js。
+remote_dir="${ONLINE_DEPLOY_ROOT}"
+remote_package="/tmp/paigow-online-${BUILD_NUMBER}.tar.gz"
+
+if [ ! -f "dist-server/main.js" ]; then
+  echo "后端产物缺失"
+  exit 20
+fi
+
+tar -zcf "${PACKAGE_NAME}" -C dist-server .
+
+echo "开始发布联机后端到 ${ONLINE_HOST}:${remote_dir}"
+ssh -o StrictHostKeyChecking=no "root@${ONLINE_HOST}" "mkdir -p '${remote_dir}'"
+scp -o StrictHostKeyChecking=no "${PACKAGE_NAME}" "root@${ONLINE_HOST}:${remote_package}"
+
+# systemd 单元只首次创建；后续发版只覆盖产物并重启，避免覆盖服务器本地配置。
+ssh -o StrictHostKeyChecking=no "root@${ONLINE_HOST}" "set -euo pipefail; tar -zxf '${remote_package}' -C '${remote_dir}'; if [ ! -f /etc/systemd/system/${ONLINE_SERVICE_NAME}.service ]; then cat > /etc/systemd/system/${ONLINE_SERVICE_NAME}.service <<'UNIT'
+[Unit]
+Description=PaiGow online WebSocket service
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=${remote_dir}
+ExecStart=${REMOTE_NODE_BIN} ${remote_dir}/main.js
+Environment=NODE_ENV=production
+Environment=PORT=${ONLINE_PORT}
+Restart=always
+RestartSec=2
+User=root
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+fi; if [ ! -x '${REMOTE_NODE_BIN}' ]; then echo '目标服务器 Node.js 路径不存在'; exit 21; fi; systemctl daemon-reload; systemctl enable ${ONLINE_SERVICE_NAME} >/dev/null; systemctl restart ${ONLINE_SERVICE_NAME}; sleep 1; systemctl is-active ${ONLINE_SERVICE_NAME}; curl -fsS http://127.0.0.1:${ONLINE_PORT}/; rm -f '${remote_package}'"
+rm -f "${PACKAGE_NAME}"
+'''
+            }
+        }
+    }
+
+    post {
+        always {
+            sh label: '清理本次构建包', script: '''#!/usr/bin/env bash
+rm -f "${PACKAGE_NAME}" 2>/dev/null || true
+'''
+        }
+    }
+}

@@ -8,12 +8,22 @@ import { defineConfig } from 'vitest/config'
  */
 export default defineConfig({
   plugins: [react()],
+  ssr: {
+    /* 联机服务发布为单文件产物，服务器上不需要再安装 node_modules。 */
+    noExternal: true,
+  },
   server: {
     /**
      * 开发服务需要监听所有网卡，手机或局域网设备才能访问本机 IP。
      */
     host: '0.0.0.0',
     port: 5173,
+    proxy: {
+      '/ws': {
+        target: 'ws://127.0.0.1:8787',
+        ws: true,
+      },
+    },
   },
   preview: {
     /**
@@ -31,5 +41,6 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
     css: true,
+    include: ['src/**/__tests__/**/*.test.ts', 'server/**/*.test.ts'],
   },
 })

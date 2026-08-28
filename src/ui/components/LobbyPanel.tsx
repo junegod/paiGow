@@ -39,6 +39,18 @@ interface LobbyPanelProps {
   canConfigureSeats?: boolean
   /** 本机用户面板配置，只在初始大厅展示。 */
   localUserPanel?: LocalUserPanelProps
+  /** 创建联机房间；服务端地址由控制器统一管理。 */
+  onCreateRoom?: (playerName: string) => void
+  /** 输入房间码加入联机房间。 */
+  onJoinRoom?: (roomCode: string, playerName: string) => void
+  /** 联机连接状态，仅在首页传给大厅。 */
+  onlineConnectionStatus?: 'idle' | 'connecting' | 'connected' | 'reconnecting'
+  /** 用户输入的房间码。 */
+  onlineRoomCode?: string
+  /** 用户输入的联机昵称。 */
+  onlinePlayerName?: string
+  /** 联机服务端返回或本地连接异常提示。 */
+  onlineError?: string | null
   /** 当前保存的机器人难度，三个机器人共用。 */
   botDifficulty: BotDifficulty
   /** 保存首页选择的机器人难度。 */
@@ -72,6 +84,12 @@ export function LobbyPanel({
   onClose,
   canConfigureSeats = true,
   localUserPanel,
+  onCreateRoom,
+  onJoinRoom,
+  onlineConnectionStatus,
+  onlineRoomCode = '',
+  onlinePlayerName = '',
+  onlineError,
   botDifficulty,
   onBotDifficultyChange,
   onOpenSettings,
@@ -80,6 +98,9 @@ export function LobbyPanel({
   const [selectedOpeningCardIds, setSelectedOpeningCardIds] = useState<string[]>([])
   const [isRulesVisible, setIsRulesVisible] = useState(false)
   const [lobbyMode, setLobbyMode] = useState<LobbyMode>('home')
+  const [onlineCodeInput, setOnlineCodeInput] = useState(onlineRoomCode)
+  const [onlineNameInput, setOnlineNameInput] = useState(onlinePlayerName)
+  const canUseOnline = Boolean(onCreateRoom && onJoinRoom)
   const deck = useMemo(() => sortCardInstances(createDeck()), [])
   const cardDefinitionMap = useMemo(createCardDefinitionMap, [])
   const canPickOpeningHand = canConfigureSeats && !onClose
@@ -124,6 +145,15 @@ export function LobbyPanel({
    */
   function startSinglePlayer(): void {
     onStart({ humanSeat: 0 })
+  }
+
+  /**
+   * 提交联机加入请求；服务端会校验房间码并分配第一个空座位。
+   */
+  function joinOnlineRoom(): void {
+    if (onlineCodeInput.trim().length === 6) {
+      onJoinRoom?.(onlineCodeInput, onlineNameInput.trim() || activeUser?.nickname || '玩家')
+    }
   }
 
   return (
@@ -246,6 +276,46 @@ export function LobbyPanel({
                   多人对战
                 </button>
               </div>
+              {canUseOnline ? (
+                <div className="online-form">
+                  <p className="online-form__title">朋友局</p>
+                  <input
+                    className="online-form__input"
+                    placeholder="你的名字"
+                    value={onlineNameInput}
+                    onChange={(event) => setOnlineNameInput(event.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className="home-action"
+                    onClick={() => onCreateRoom?.(onlineNameInput.trim() || activeUser?.nickname || '玩家')}
+                  >
+                    创建房间
+                  </button>
+                  <div className="online-form__join">
+                    <input
+                      className="online-form__input"
+                      placeholder="6位房间码"
+                      inputMode="numeric"
+                      maxLength={6}
+                      value={onlineCodeInput}
+                      onChange={(event) => setOnlineCodeInput(event.target.value.replace(/\D/g, ''))}
+                    />
+                    <button
+                      type="button"
+                      className="home-action"
+                      disabled={onlineCodeInput.length !== 6}
+                      onClick={joinOnlineRoom}
+                    >
+                      加入
+                    </button>
+                  </div>
+                  {onlineConnectionStatus === 'reconnecting' ? (
+                    <p className="online-form__status">服务器连接中...</p>
+                  ) : null}
+                  {onlineError ? <p className="online-form__error">{onlineError}</p> : null}
+                </div>
+              ) : null}
             </div>
           </section>
 
