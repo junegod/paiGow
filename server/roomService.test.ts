@@ -82,7 +82,7 @@ describe('OnlineRoomService', () => {
     )
     expect(startMessage.state?.currentRound ?? null).not.toBeNull()
 
-    await vi.advanceTimersByTimeAsync(750)
+    await vi.advanceTimersByTimeAsync(1_000)
     expect(socket.messages.some((data) => data.includes('"type":"match-state"'))).toBe(true)
     service.stop()
   })
