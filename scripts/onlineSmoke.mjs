@@ -9,7 +9,12 @@ socket.on('open', () => {
 
 socket.on('message', (data) => {
   const message = JSON.parse(String(data))
-  console.log(message.type, message.player?.seat, message.room?.roomCode)
+  if (message.type === 'error') {
+    console.error(message.code, message.message)
+    process.exitCode = 1
+  } else {
+    console.log(message.type, message.player?.seat, message.room?.roomCode)
+  }
   socket.close()
 })
 

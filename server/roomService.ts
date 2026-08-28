@@ -25,6 +25,17 @@ export type RoomSocket = {
   close: (code?: number, reason?: string) => void
 }
 
+/**
+ * Node 16 没有 globalThis.structuredClone。
+ * 服务端状态都是纯 JSON 数据，使用 JSON 深拷贝保证 CentOS 7 兼容。
+ *
+ * @param value 需要复制的状态。
+ * @returns 与原状态断开引用的副本。
+ */
+function cloneJsonValue<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T
+}
+
 /** 服务端保存的一个真实玩家连接。 */
 interface RoomPlayer {
   token: string
@@ -114,7 +125,7 @@ function createDefaultSeatConfigs(): SeatConfig[] {
 function createOnlineRoomState(room: OnlineRoom): OnlineRoomState {
   return {
     roomCode: room.roomCode,
-    seatConfigs: structuredClone(room.match.seatConfigs),
+    seatConfigs: cloneJsonValue(room.match.seatConfigs),
     onlineSeats: [...room.players.values()]
       .filter((player) => player.online)
       .map((player) => player.seat),
@@ -180,7 +191,7 @@ export class OnlineRoomService {
       const roomStateMessage: OnlineServerMessage = {
         type: 'room-state',
         room: createOnlineRoomState(result.room),
-        state: structuredClone(result.room.match),
+        state: cloneJsonValue(result.room.match),
       }
 
       return {
@@ -226,7 +237,7 @@ export class OnlineRoomService {
         this.broadcast(room, {
           type: 'room-state',
           room: createOnlineRoomState(room),
-          state: structuredClone(room.match),
+          state: cloneJsonValue(room.match),
         })
         this.scheduleBotMoves(room)
       }
@@ -308,7 +319,7 @@ export class OnlineRoomService {
         roomCode,
         player: this.toPublicPlayer(player),
         room: createOnlineRoomState(room),
-        state: structuredClone(room.match),
+        state: cloneJsonValue(room.match),
       },
     }
   }
@@ -354,7 +365,7 @@ export class OnlineRoomService {
         roomCode: room.roomCode,
         player: this.toPublicPlayer(player),
         room: createOnlineRoomState(room),
-        state: structuredClone(room.match),
+        state: cloneJsonValue(room.match),
       },
       broadcastRoom: true,
     }
@@ -393,7 +404,7 @@ export class OnlineRoomService {
       this.broadcast(room, {
         type: 'room-state',
         room: createOnlineRoomState(room),
-        state: structuredClone(room.match),
+        state: cloneJsonValue(room.match),
       })
     }
 
@@ -407,7 +418,7 @@ export class OnlineRoomService {
         roomCode: room.roomCode,
         player: this.toPublicPlayer(player),
         room: createOnlineRoomState(room),
-        state: structuredClone(room.match),
+        state: cloneJsonValue(room.match),
       },
     }
   }
@@ -449,7 +460,7 @@ export class OnlineRoomService {
       response: {
         type: 'room-state',
         room: createOnlineRoomState(room),
-        state: structuredClone(room.match),
+        state: cloneJsonValue(room.match),
       },
     }
   }
@@ -492,7 +503,7 @@ export class OnlineRoomService {
       response: {
         type: 'room-state',
         room: createOnlineRoomState(room),
-        state: structuredClone(room.match),
+        state: cloneJsonValue(room.match),
       },
       broadcastRoom: true,
     }
@@ -530,7 +541,7 @@ export class OnlineRoomService {
       player,
       response: {
         type: 'match-state',
-        state: structuredClone(room.match),
+        state: cloneJsonValue(room.match),
       },
       broadcastRoom: true,
     }
@@ -560,7 +571,7 @@ export class OnlineRoomService {
         player,
         response: {
           type: 'match-state',
-          state: structuredClone(room.match),
+          state: cloneJsonValue(room.match),
         },
       }
     }
@@ -571,7 +582,7 @@ export class OnlineRoomService {
       response: {
         type: 'room-state',
         room: createOnlineRoomState(room),
-        state: structuredClone(room.match),
+        state: cloneJsonValue(room.match),
       },
     }
   }
@@ -753,7 +764,7 @@ export class OnlineRoomService {
   private broadcastMatchState(room: OnlineRoom): void {
     this.broadcast(room, {
       type: 'match-state',
-      state: structuredClone(room.match),
+      state: cloneJsonValue(room.match),
     })
   }
 
