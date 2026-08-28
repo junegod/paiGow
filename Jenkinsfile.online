@@ -21,7 +21,7 @@ pipeline {
         string(name: 'ONLINE_PORT', defaultValue: '8787', description: '联机后端监听端口。')
         string(name: 'ONLINE_SERVICE_NAME', defaultValue: 'paigow-online', description: '服务器上的 systemd 服务名。')
         string(name: 'ONLINE_DEPLOY_ROOT', defaultValue: '/data/project/online/paigow', description: '服务器上的后端应用目录。')
-        string(name: 'REMOTE_NODE_BIN', defaultValue: '/usr/local/bin/node', description: '目标服务器 Node.js 可执行文件路径。')
+        string(name: 'REMOTE_NODE_BIN', defaultValue: '/usr/local/bin/node16', description: '目标服务器 Node.js 可执行文件路径。')
         booleanParam(name: 'SKIP_DEPLOY', defaultValue: false, description: '只构建归档，不发布或重启服务。')
     }
 
