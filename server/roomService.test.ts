@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import type { TurnAction } from '@/rules-core/types'
+import { jiAnDaSuoZiRuleSet } from '@/rules-variants/ji-an-da-suo-zi/ruleSet'
+
 import { OnlineRoomService, type RoomSocket } from './roomService'
 
 /** 测试用假连接，只记录发送过的文本。 */
@@ -76,11 +79,47 @@ describe('OnlineRoomService', () => {
       type: 'start-match',
       playerToken: created.player.token,
     })
-    const startMessage = findMessage<{ type: string; state?: { currentRound: unknown } }>(
+    const startMessage = findMessage<{
+      type: string
+      state?: { currentRound?: { currentSeat: number | null } }
+    }>(
       socket,
       'room-state',
     )
     expect(startMessage.state?.currentRound ?? null).not.toBeNull()
+
+    // 随机先手可能落在房主座位；房主是真人，测试按前端同一套规则先完成首个合法动作。
+    const firstSeat = startMessage.state?.currentRound?.currentSeat
+
+    if (firstSeat === 0) {
+      const round = startMessage.state?.currentRound
+
+      if (!round) {
+        throw new Error('开局后缺少牌局状态。')
+      }
+
+      const firstAction = jiAnDaSuoZiRuleSet.listTurnActions(round, 0)[0]
+
+      if (!firstAction) {
+        throw new Error('真人先手没有可用动作。')
+      }
+
+      const action: TurnAction = {
+        seat: 0,
+        intent: firstAction.intent,
+        selectedCardIds: firstAction.selectedCardIds,
+      }
+      const actionResult = service.handleMessage(socket, JSON.stringify({
+        type: 'submit-action',
+        playerToken: created.player.token,
+        action,
+      }))
+      socket.messages.push(JSON.stringify(actionResult.toSelf))
+
+      if (actionResult.toRoom) {
+        socket.messages.push(JSON.stringify(actionResult.toRoom.message))
+      }
+    }
 
     await vi.advanceTimersByTimeAsync(1_000)
     expect(socket.messages.some((data) => data.includes('"type":"match-state"'))).toBe(true)

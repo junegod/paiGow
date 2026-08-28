@@ -46,6 +46,71 @@ import {
 } from '@/rules-variants/ji-an-da-suo-zi/patternCatalog'
 import { calculateSettlement } from '@/rules-variants/ji-an-da-suo-zi/scoring'
 
+/**
+ * 递归拷贝规则状态，并保留状态内部共享的对象引用。
+ * 服务端运行在 Node 16 时没有全局 structuredClone；公开牌日志和赢墩堆可能引用同一墩记录，必须继续同步翻面。
+ *
+ * @param value 当前节点值。
+ * @param seen 已拷贝对象映射，用于保留共享引用。
+ * @returns 与原状态断开写入引用的副本。
+ */
+function cloneStateNode(value: unknown, seen: WeakMap<object, unknown>): unknown {
+  if (value === null || typeof value !== 'object') {
+    return value
+  }
+
+  const source = value as object
+  const cachedClone = seen.get(source)
+
+  if (cachedClone) {
+    return cachedClone
+  }
+
+  if (Array.isArray(source)) {
+    const clonedArray: unknown[] = []
+    seen.set(source, clonedArray)
+    source.forEach((item) => clonedArray.push(cloneStateNode(item, seen)))
+    return clonedArray
+  }
+
+  if (source instanceof Date) {
+    return new Date(source.getTime())
+  }
+
+  if (source instanceof Map) {
+    const clonedMap = new Map()
+    seen.set(source, clonedMap)
+    source.forEach((item, key) => clonedMap.set(key, cloneStateNode(item, seen)))
+    return clonedMap
+  }
+
+  if (source instanceof Set) {
+    const clonedSet = new Set()
+    seen.set(source, clonedSet)
+    source.forEach((item) => clonedSet.add(cloneStateNode(item, seen)))
+    return clonedSet
+  }
+
+  const clonedObject: Record<string, unknown> = {}
+  seen.set(source, clonedObject)
+
+  for (const [key, item] of Object.entries(source)) {
+    clonedObject[key] = cloneStateNode(item, seen)
+  }
+
+  return clonedObject
+}
+
+/**
+ * 深拷贝一局或多局规则状态。
+ *
+ * @param value 需要复制的规则状态。
+ * @returns 与原状态断开写入引用的副本。
+ */
+function cloneSerializableState<T>(value: T): T {
+  return cloneStateNode(value, new WeakMap()) as T
+}
+
 const DICE_TO_DOOR: Record<string, 'long' | 'yao' | 'point'> = {
   '11': 'long',
   '13': 'long',
@@ -1315,7 +1380,7 @@ export function startRound(
   rng: RandomSource,
   options: StartRoundOptions = {},
 ): ActionResult {
-  const nextMatch = structuredClone(match)
+  const nextMatch = cloneSerializableState(match)
   const roundNumber = nextMatch.roundNumber + 1
   const ceremony = createCeremony(roundNumber, nextMatch.lastRoundLastTrickWinner, rng)
   const shuffledDeck = rng.shuffle(createDeck())
@@ -1580,7 +1645,7 @@ export function submitAction(
   action: TurnAction,
   rng: RandomSource,
 ): ActionResult {
-  const nextMatch = structuredClone(match)
+  const nextMatch = cloneSerializableState(match)
   const round = nextMatch.currentRound
 
   if (!round || round.phase !== 'playing') {
@@ -1751,7 +1816,7 @@ export function submitAction(
  * 整局结束后统一翻开背面弃牌并生成结算。
  */
 export function finishRoundAndReveal(match: MatchState): ActionResult {
-  const nextMatch = structuredClone(match)
+  const nextMatch = cloneSerializableState(match)
   const round = nextMatch.currentRound
 
   if (!round || round.phase !== 'awaiting-reveal') {
@@ -1774,8 +1839,7 @@ export function finishRoundAndReveal(match: MatchState): ActionResult {
   round.phase = 'settled'
   nextMatch.phase = 'settled'
   nextMatch.lastRoundLastTrickWinner = round.lastTrickWinner ?? null
-  nextMatch.replayRounds = [...nextMatch.replayRounds, structuredClone(round)]
-
+  nextMatch.replayRounds = [...nextMatch.replayRounds, cloneSerializableState(round)]
   const message = '整局背面弃牌已统一翻开，可以查看完整复盘与结算。'
   pushEvent(round, 'result', message)
 
