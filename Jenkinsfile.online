@@ -61,9 +61,9 @@ nvm use "${NODE_VERSION}"
 pnpm lint
 pnpm test -- --run
 pnpm build:server
-test -f dist-server/main.js
+test -f dist-server/main.mjs
 '''
-                archiveArtifacts artifacts: 'dist-server/main.js', fingerprint: true, onlyIfSuccessful: true
+                archiveArtifacts artifacts: 'dist-server/main.mjs', fingerprint: true, onlyIfSuccessful: true
             }
         }
 
@@ -79,7 +79,7 @@ set -euo pipefail
 remote_dir="${ONLINE_DEPLOY_ROOT}"
 remote_package="/tmp/paigow-online-${BUILD_NUMBER}.tar.gz"
 
-if [ ! -f "dist-server/main.js" ]; then
+if [ ! -f "dist-server/main.mjs" ]; then
   echo "后端产物缺失"
   exit 20
 fi
@@ -99,7 +99,7 @@ After=network.target
 [Service]
 Type=simple
 WorkingDirectory=${remote_dir}
-ExecStart=${REMOTE_NODE_BIN} ${remote_dir}/main.js
+ExecStart=${REMOTE_NODE_BIN} ${remote_dir}/main.mjs
 Environment=NODE_ENV=production
 Environment=PORT=${ONLINE_PORT}
 Restart=always

@@ -10,7 +10,7 @@
     "audit:difficulties": "node scripts/runBotDifficultyBenchmark.mjs",
     "online:server": "vite-node --config vite.config.ts server/main.ts",
     "online:smoke": "node scripts/onlineSmoke.mjs",
-    "build:server": "vite build --ssr server/main.ts --outDir dist-server",
+    "build:server": "vite build --ssr server/main.ts --outDir dist-server && mv dist-server/main.js dist-server/main.mjs",
     "build": "tsc -b && vite build",
     "android:build": "pnpm build && cap sync android && cap build android",
     "android:sync": "pnpm build && cap sync android",
