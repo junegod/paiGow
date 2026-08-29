@@ -20,6 +20,9 @@ import { RulesPanel } from '@/ui/components/RulesPanel'
 
 type LobbyMode = 'home' | 'custom'
 
+/** 首页多人对战区域的展示状态，避免旧入口一直显示“敬请期待”。 */
+type OnlineSectionMode = 'collapsed' | 'expanded'
+
 const HOME_FEATURED_CARD_DEFINITION_IDS = [
   'long_tian',
   'yao_fu',
@@ -100,6 +103,9 @@ export function LobbyPanel({
   const [lobbyMode, setLobbyMode] = useState<LobbyMode>('home')
   const [onlineCodeInput, setOnlineCodeInput] = useState(onlineRoomCode)
   const [onlineNameInput, setOnlineNameInput] = useState(onlinePlayerName)
+  const [onlineSectionMode, setOnlineSectionMode] = useState<OnlineSectionMode>(
+    onlineRoomCode || onlinePlayerName ? 'expanded' : 'collapsed',
+  )
   const canUseOnline = Boolean(onCreateRoom && onJoinRoom)
   const deck = useMemo(() => sortCardInstances(createDeck()), [])
   const cardDefinitionMap = useMemo(createCardDefinitionMap, [])
@@ -270,13 +276,20 @@ export function LobbyPanel({
                 </button>
                 <span>不计积分</span>
               </div>
-              <div className="home-action--disabled-wrap">
-                <span>敬请期待</span>
-                <button type="button" disabled>
+              <div className="home-action-wrap">
+                <button
+                  type="button"
+                  className="home-action"
+                  aria-expanded={onlineSectionMode === 'expanded'}
+                  onClick={() => setOnlineSectionMode((previousMode) =>
+                    previousMode === 'expanded' ? 'collapsed' : 'expanded',
+                  )}
+                >
                   多人对战
                 </button>
+                <span>{onlineSectionMode === 'expanded' ? '收起' : '朋友局'}</span>
               </div>
-              {canUseOnline ? (
+              {canUseOnline && onlineSectionMode === 'expanded' ? (
                 <div className="online-form">
                   <p className="online-form__title">朋友局</p>
                   <input
