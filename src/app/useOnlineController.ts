@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 
+import { arrangeJiAnDaSuoZiHandIds } from '@/rules-variants/ji-an-da-suo-zi/handArrangement'
 import { jiAnDaSuoZiRuleSet } from '@/rules-variants/ji-an-da-suo-zi/ruleSet'
 
 import {
@@ -106,6 +107,13 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
   const [notice, setNotice] = useState<string | null>(null)
   const [matchState, setMatchState] = useState<MatchState | null>(null)
   const [selectedCardIds, setSelectedCardIds] = useState<string[]>([])
+  /**
+   * 联机本地手牌顺序：座位号 -> 牌实例 ID 数组。
+   * 服务端状态只保存牌实例，界面排序属于纯展示，不回传服务端。
+   */
+  const [handOrder, setHandOrder] = useState<Partial<Record<SeatId, string[]>>>({})
+  const [isHandOrganizing, setIsHandOrganizing] = useState(false)
+  const organizeAnimationTimerRef = useRef<number | null>(null)
   const [isOpeningCeremonyVisible, setIsOpeningCeremonyVisible] = useState(false)
   const lastSeenRoundNumberRef = useRef(0)
 
@@ -124,6 +132,30 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
   const applyViewerState = useEffectEvent((nextState: MatchState, viewerSeat: SeatId) => {
     latestServerStateRef.current = structuredClone(nextState)
     setMatchState(createMatchStateForViewer(nextState, viewerSeat))
+  })
+
+  /**
+   * 按本地保存的顺序展示某个座位的牌。
+   * 顺序缺失或包含不存在的牌时，保留存在的部分并追加新增牌。
+   *
+   * @param seat 服务端逻辑座位。
+   * @param hand 服务端手牌数组。
+   * @returns 用于展示的牌数组。
+   */
+  const orderSeatHand = useEffectEvent((seat: SeatId, hand: MatchState['currentRound'] extends null ? never : NonNullable<MatchState['currentRound']>['seats'][number]['hand']) => {
+    const savedOrder = handOrder[seat]
+
+    if (!savedOrder) {
+      return hand
+    }
+
+    const currentIds = new Set(hand.map((card) => card.id))
+    const preserved = savedOrder.filter((cardId) => currentIds.has(cardId))
+    const preservedSet = new Set(preserved)
+    const appended = hand.map((card) => card.id).filter((cardId) => !preservedSet.has(cardId))
+    const nextOrder = [...preserved, ...appended]
+
+    return nextOrder.map((cardId) => hand.find((card) => card.id === cardId)!).filter(Boolean)
   })
 
   /**
@@ -340,18 +372,56 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
    *
    * @param nextCardIds 拖拽后的界面牌序。
    */
-  function reorderCurrentHand(nextCardIds: string[]): void {
+  const reorderCurrentHand = useCallback((nextCardIds: string[]) => {
+    const currentSeat = matchState?.currentRound?.currentSeat
+
+    if (currentSeat === null || currentSeat === undefined || !player) {
+      return
+    }
+
+    const serverSeat = mapSeatFromViewer(currentSeat, player.seat)
+    setHandOrder((previousOrder) => ({
+      ...previousOrder,
+      [serverSeat]: nextCardIds,
+    }))
     setSelectedCardIds((previousCardIds) =>
       nextCardIds.filter((cardId) => previousCardIds.includes(cardId)),
     )
-  }
+  }, [matchState, player])
 
   /**
    * 手动触发一次界面理牌反馈。
    */
-  function organizeHumanHand(): void {
-    setSelectedCardIds((previousCardIds) => [...previousCardIds])
-  }
+  const organizeHumanHand = useCallback(() => {
+    const currentRound = matchState?.currentRound
+
+    if (!currentRound || !player) {
+      return
+    }
+
+    const serverSeat = player.seat
+    const seatState = currentRound.seats.find((seat) => seat.seat === serverSeat)
+
+    if (!seatState || seatState.hand.length <= 1) {
+      return
+    }
+
+    const nextOrder = arrangeJiAnDaSuoZiHandIds(seatState.hand)
+    setHandOrder((previousOrder) => ({
+      ...previousOrder,
+      [serverSeat]: nextOrder,
+    }))
+    setIsHandOrganizing(true)
+
+    if (organizeAnimationTimerRef.current !== null) {
+      window.clearTimeout(organizeAnimationTimerRef.current)
+    }
+
+    organizeAnimationTimerRef.current = window.setTimeout(() => {
+      setIsHandOrganizing(false)
+      organizeAnimationTimerRef.current = null
+    }, 900)
+  }, [matchState, player])
 
   /**
    * 进入联机大厅页面。首次进入时立即拉取一次房间列表，之后由轮询定时刷新。
@@ -504,18 +574,28 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
     const currentSeatState = currentRound && currentSeat !== null
       ? currentRound.seats.find((seatState) => seatState.seat === currentSeat) ?? null
       : null
-    const humanSeatState = currentRound?.seats.find((seatState) =>
-      seatState.seat === 0) ?? null
+    const humanSeatState = player
+      ? currentRound?.seats.find((seatState) => seatState.seat === player.seat) ?? null
+      : null
+    const humanHandCards = humanSeatState && player
+      ? orderSeatHand(player.seat, humanSeatState.hand)
+      : []
+    const visibleSeatState = currentSeatState?.config.mode === 'human'
+      ? currentSeatState
+      : humanSeatState
+    const visibleHandCards = visibleSeatState && player && visibleSeatState.seat === player.seat
+      ? humanHandCards
+      : currentSeatState?.hand ?? []
 
     return {
       matchState,
       currentRound,
       currentSeat,
       currentSeatState,
-      currentHandCards: currentSeatState?.hand ?? [],
+      currentHandCards: visibleHandCards,
       humanSeatState,
       visibleActionSeatState: currentSeatState,
-      visibleActionHandCards: currentSeatState?.hand ?? [],
+      visibleActionHandCards: visibleHandCards,
       reviewTrick: null,
       openingCeremony: openingCeremony
         ? {
@@ -535,7 +615,7 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
             hint: '等待开局。',
           },
       selectedCardIds,
-      isHandOrganizing: false,
+      isHandOrganizing,
       ruleSet: jiAnDaSuoZiRuleSet,
       replayState: null,
       toggleCardSelection,
@@ -547,15 +627,7 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
       restartMatch: startMatch,
       finishOpeningCeremony: finishOpeningCeremony,
     }
-  }, [
-    openingCeremony,
-    isOpeningCeremonyVisible,
-    matchState,
-    selectedCardIds,
-    startMatch,
-    submitViewerAction,
-    toggleCardSelection,
-  ])
+  }, [openingCeremony, isHandOrganizing, isOpeningCeremonyVisible, matchState, player, selectedCardIds, startMatch, submitViewerAction, toggleCardSelection, reorderCurrentHand, organizeHumanHand])
 
   return {
     mode,
