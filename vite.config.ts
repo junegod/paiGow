@@ -19,6 +19,10 @@ export default defineConfig({
     host: '0.0.0.0',
     port: 5173,
     proxy: {
+      /**
+       * 预览构建产物时同样需要代理 WebSocket，
+       * 否则构建产物联机只能依赖生产环境 Nginx 的 /ws 转发。
+       */
       '/ws': {
         target: 'ws://127.0.0.1:8787',
         ws: true,
@@ -31,6 +35,12 @@ export default defineConfig({
      */
     host: '0.0.0.0',
     port: 5173,
+    proxy: {
+      '/ws': {
+        target: 'ws://127.0.0.1:8787',
+        ws: true,
+      },
+    },
   },
   resolve: {
     alias: {

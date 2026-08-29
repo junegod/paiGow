@@ -8,6 +8,9 @@ pnpm-debug.log*
 lerna-debug.log*
 
 node_modules
+
+# 本地排查用开发构建产物
+dist-dev
 dist
 dist-server
 dist-server-smoke/

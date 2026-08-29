@@ -22,6 +22,7 @@ import type {
   OnlineServerMessage,
 } from '@/services/online/types'
 import type {
+  CardInstance,
   MatchState,
   PreparedAction,
   RoundState,
@@ -30,6 +31,34 @@ import type {
 
 /** 大厅等待开始时的机器人默认名字。 */
 const DEFAULT_BOT_NAMES = ['村里的阿明', '村里的老周', '村里的细妹']
+
+/**
+ * 按本地保存的顺序展示某个座位的牌。
+ * 顺序缺失时返回原始手牌；顺序里少了牌就追加，顺序里多了牌就过滤掉。
+ *
+ * @param savedOrder 本地保存的牌实例 ID 顺序。
+ * @param hand 服务端手牌数组。
+ * @returns 用于展示的牌数组。
+ */
+function orderHandBySavedIds(
+  savedOrder: string[] | undefined,
+  hand: CardInstance[],
+): CardInstance[] {
+  if (!savedOrder) {
+    return hand
+  }
+
+  const currentIds = new Set(hand.map((card) => card.id))
+  const preserved = savedOrder.filter((cardId) => currentIds.has(cardId))
+  const preservedSet = new Set(preserved)
+  const appended = hand
+    .map((card) => card.id)
+    .filter((cardId) => !preservedSet.has(cardId))
+
+  return [...preserved, ...appended]
+    .map((cardId) => hand.find((card) => card.id === cardId))
+    .filter((card): card is CardInstance => Boolean(card))
+}
 
 /** 联机界面所处阶段。 */
 export type OnlineMode = 'offline' | 'browser' | 'lobby' | 'match'
@@ -131,31 +160,9 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
    */
   const applyViewerState = useEffectEvent((nextState: MatchState, viewerSeat: SeatId) => {
     latestServerStateRef.current = structuredClone(nextState)
+    // 服务端状态推进后，界面上的旧选牌必然失效；同步清空避免残留引用崩溃。
+    setSelectedCardIds([])
     setMatchState(createMatchStateForViewer(nextState, viewerSeat))
-  })
-
-  /**
-   * 按本地保存的顺序展示某个座位的牌。
-   * 顺序缺失或包含不存在的牌时，保留存在的部分并追加新增牌。
-   *
-   * @param seat 服务端逻辑座位。
-   * @param hand 服务端手牌数组。
-   * @returns 用于展示的牌数组。
-   */
-  const orderSeatHand = useEffectEvent((seat: SeatId, hand: MatchState['currentRound'] extends null ? never : NonNullable<MatchState['currentRound']>['seats'][number]['hand']) => {
-    const savedOrder = handOrder[seat]
-
-    if (!savedOrder) {
-      return hand
-    }
-
-    const currentIds = new Set(hand.map((card) => card.id))
-    const preserved = savedOrder.filter((cardId) => currentIds.has(cardId))
-    const preservedSet = new Set(preserved)
-    const appended = hand.map((card) => card.id).filter((cardId) => !preservedSet.has(cardId))
-    const nextOrder = [...preserved, ...appended]
-
-    return nextOrder.map((cardId) => hand.find((card) => card.id === cardId)!).filter(Boolean)
   })
 
   /**
@@ -356,7 +363,14 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
   const toggleCardSelection = useCallback((cardId: string) => {
     const currentRound = matchState?.currentRound
 
-    if (!currentRound || currentRound.currentSeat === null || isOpeningCeremonyVisible) {
+    if (!currentRound || currentRound.phase !== 'playing' || !player) {
+      return
+    }
+
+    // 只有轮到自己时才允许选牌，避免机器人代打后残留旧选牌。
+    const viewerSeat = currentRound.seats.find((seatState) => seatState.seat === player.seat)
+
+    if (currentRound.currentSeat !== viewerSeat?.seat || isOpeningCeremonyVisible) {
       return
     }
 
@@ -365,7 +379,7 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
         ? previousCardIds.filter((currentCardId) => currentCardId !== cardId)
         : [...previousCardIds, cardId],
     )
-  }, [isOpeningCeremonyVisible, matchState])
+  }, [isOpeningCeremonyVisible, matchState, player])
 
   /**
    * 联机第一版拖拽只作为手势反馈，真实牌序仍以规则层为准。
@@ -534,12 +548,18 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
    */
   const submitViewerAction = useCallback((action: PreparedAction) => {
     const currentSeat = matchState?.currentRound?.currentSeat
+    const currentPhase = matchState?.currentRound?.phase
 
     if (!player) {
       return
     }
 
     if (currentSeat === null || currentSeat === undefined) {
+      return
+    }
+
+    // 机器人代打时服务端状态已推进，旧选牌动作可能已经失效；静默丢弃即可。
+    if (currentPhase !== 'playing') {
       return
     }
 
@@ -577,8 +597,8 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
     const humanSeatState = player
       ? currentRound?.seats.find((seatState) => seatState.seat === player.seat) ?? null
       : null
-    const humanHandCards = humanSeatState && player
-      ? orderSeatHand(player.seat, humanSeatState.hand)
+    const humanHandCards = humanSeatState
+      ? orderHandBySavedIds(handOrder[humanSeatState.seat], humanSeatState.hand)
       : []
     const visibleSeatState = currentSeatState?.config.mode === 'human'
       ? currentSeatState
@@ -627,7 +647,7 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
       restartMatch: startMatch,
       finishOpeningCeremony: finishOpeningCeremony,
     }
-  }, [openingCeremony, isHandOrganizing, isOpeningCeremonyVisible, matchState, player, selectedCardIds, startMatch, submitViewerAction, toggleCardSelection, reorderCurrentHand, organizeHumanHand])
+  }, [handOrder, openingCeremony, isHandOrganizing, isOpeningCeremonyVisible, matchState, player, selectedCardIds, startMatch, submitViewerAction, toggleCardSelection, reorderCurrentHand, organizeHumanHand])
 
   return {
     mode,
