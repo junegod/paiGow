@@ -3201,6 +3201,79 @@ button.pai-card:focus-visible {
   color: #ff9c9c;
 }
 
+/*
+ * 联机大厅页面：顶部新建房间区 + 中间房间列表 + 底部返回。
+ * 列表卡片沿用朋友局深绿底金色描边，与首页风格保持一致。
+ */
+.online-browser {
+  width: min(100%, 560px);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid rgba(255, 226, 122, 0.24);
+  border-radius: 22px;
+  background: rgba(0, 25, 18, 0.56);
+}
+
+.online-browser__create {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 118px;
+  gap: 7px;
+}
+
+.online-browser__create input {
+  min-height: 44px;
+  border: 1px solid rgba(255, 226, 122, 0.32);
+  border-radius: 14px;
+  padding: 0 12px;
+  color: #fff6c7;
+  background: rgba(0, 25, 18, 0.7);
+  outline: none;
+}
+
+.online-browser__list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.online-browser__room {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 226, 122, 0.26);
+  border-radius: 16px;
+  background: rgba(0, 25, 18, 0.66);
+}
+
+.online-browser__room-main {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.online-browser__room-main strong {
+  color: #fff6c7;
+  font-size: 0.92rem;
+}
+
+.online-browser__room-main span {
+  color: rgba(255, 246, 199, 0.66);
+  font-size: 0.72rem;
+}
+
+.online-browser__empty {
+  margin: 0;
+  padding: 16px 0;
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 0.78rem;
+  text-align: center;
+}
+
 .home-action,
 .home-action--disabled-wrap button {
   width: 100%;

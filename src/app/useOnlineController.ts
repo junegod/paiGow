@@ -16,6 +16,7 @@ import type {
 } from '@/services/online/OnlineClient'
 import type {
   OnlinePlayer,
+  OnlineRoomSummary,
   OnlineRoomState,
   OnlineServerMessage,
 } from '@/services/online/types'
@@ -30,7 +31,7 @@ import type {
 const DEFAULT_BOT_NAMES = ['村里的阿明', '村里的老周', '村里的细妹']
 
 /** 联机界面所处阶段。 */
-export type OnlineMode = 'offline' | 'lobby' | 'match'
+export type OnlineMode = 'offline' | 'browser' | 'lobby' | 'match'
 
 /**
  * 根据当前页面地址推导 WebSocket 地址，支持 Vite 代理和同域名部署。
@@ -94,6 +95,8 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
   const pendingOpeningRoundRef = useRef<RoundState | null>(null)
   const [client] = useState(() => new OnlineClient(createWebSocketUrl()))
   const [mode, setMode] = useState<OnlineMode>('offline')
+  const [roomList, setRoomList] = useState<OnlineRoomSummary[]>([])
+  const [isRoomListLoading, setIsRoomListLoading] = useState(false)
   const [connectionStatus, setConnectionStatus] = useState<OnlineClientStatus>(client.status)
   const [session, setSession] = useState<OnlineSessionSnapshot | null>(() => readOnlineSession())
   const [player, setPlayer] = useState<OnlinePlayer | null>(null)
@@ -223,6 +226,11 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
         setMode('offline')
       }
     }
+
+    if (message.type === 'room-list') {
+      setRoomList(message.rooms)
+      setIsRoomListLoading(false)
+    }
   })
 
   /**
@@ -246,6 +254,25 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
       unsubscribeStatus()
     }
   }, [client])
+
+  /**
+   * 大厅页打开时每 3 秒刷新一次房间列表，离开页面或隐藏时停止。
+   */
+  useEffect(() => {
+    if (mode !== 'browser') {
+      return
+    }
+
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        client.requestRoomList()
+      }
+    }, 3000)
+
+    return () => {
+      window.clearInterval(timer)
+    }
+  }, [client, mode])
 
   /**
    * 移动端切后台后 WebSocket 可能被系统断开；回到页面时立即拉取最新状态。
@@ -324,6 +351,45 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
    */
   function organizeHumanHand(): void {
     setSelectedCardIds((previousCardIds) => [...previousCardIds])
+  }
+
+  /**
+   * 进入联机大厅页面。首次进入时立即拉取一次房间列表，之后由轮询定时刷新。
+   */
+  function enterBrowser(): void {
+    setMode('browser')
+    setIsRoomListLoading(true)
+    client.requestRoomList()
+  }
+
+  /**
+   * 离开联机大厅页面，回到首页。
+   */
+  function exitBrowser(): void {
+    setMode('offline')
+    setRoomList([])
+    setIsRoomListLoading(false)
+  }
+
+  /**
+   * 在大厅页发起创建房间。
+   *
+   * @param playerName 创建者名字。
+   */
+  function createRoomFromBrowser(playerName: string): void {
+    setError(null)
+    client.createRoom(playerName.trim() || fallbackPlayerName)
+  }
+
+  /**
+   * 在大厅页点击某个房间加入。
+   *
+   * @param roomCode 目标房间码。
+   * @param playerName 加入者名字。
+   */
+  function joinRoomFromBrowser(roomCode: string, playerName: string): void {
+    setError(null)
+    client.joinRoom(roomCode, playerName.trim() || fallbackPlayerName)
   }
 
   /**
@@ -493,6 +559,8 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
 
   return {
     mode,
+    roomList,
+    isRoomListLoading,
     connectionStatus,
     session,
     player,
@@ -504,6 +572,10 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
     isOpeningCeremonyVisible,
     createRoom,
     joinRoom,
+    enterBrowser,
+    exitBrowser,
+    createRoomFromBrowser,
+    joinRoomFromBrowser,
     saveBotNames,
     startMatch,
     submitViewerAction,

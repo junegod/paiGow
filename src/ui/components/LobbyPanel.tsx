@@ -46,6 +46,8 @@ interface LobbyPanelProps {
   onCreateRoom?: (playerName: string) => void
   /** 输入房间码加入联机房间。 */
   onJoinRoom?: (roomCode: string, playerName: string) => void
+  /** 进入联机大厅页面；不传则保留旧的首页展开表单行为。 */
+  onOpenBrowser?: () => void
   /** 联机连接状态，仅在首页传给大厅。 */
   onlineConnectionStatus?: 'idle' | 'connecting' | 'connected' | 'reconnecting'
   /** 用户输入的房间码。 */
@@ -89,6 +91,7 @@ export function LobbyPanel({
   localUserPanel,
   onCreateRoom,
   onJoinRoom,
+  onOpenBrowser,
   onlineConnectionStatus,
   onlineRoomCode = '',
   onlinePlayerName = '',
@@ -277,16 +280,22 @@ export function LobbyPanel({
                 <span>不计积分</span>
               </div>
               <div className="home-action-wrap">
-                <button
-                  type="button"
-                  className="home-action"
-                  aria-expanded={onlineSectionMode === 'expanded'}
-                  onClick={() => setOnlineSectionMode((previousMode) =>
-                    previousMode === 'expanded' ? 'collapsed' : 'expanded',
-                  )}
-                >
-                  多人对战
-                </button>
+                {onOpenBrowser ? (
+                  <button type="button" className="home-action" onClick={onOpenBrowser}>
+                    多人对战
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="home-action"
+                    aria-expanded={onlineSectionMode === 'expanded'}
+                    onClick={() => setOnlineSectionMode((previousMode) =>
+                      previousMode === 'expanded' ? 'collapsed' : 'expanded',
+                    )}
+                  >
+                    多人对战
+                  </button>
+                )}
                 <span>{onlineSectionMode === 'expanded' ? '收起' : '朋友局'}</span>
               </div>
               {canUseOnline && onlineSectionMode === 'expanded' ? (

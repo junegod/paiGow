@@ -15,6 +15,7 @@ import type {
   OnlineErrorCode,
   OnlinePlayer,
   OnlineRoomState,
+  OnlineRoomSummary,
   OnlineServerMessage,
 } from '@/services/online/types'
 
@@ -136,6 +137,23 @@ function createOnlineRoomState(room: OnlineRoom): OnlineRoomState {
 }
 
 /**
+ * 生成大厅房间列表里的一行摘要。
+ *
+ * @param room 当前房间。
+ * @returns 只包含公开信息的摘要，不携带任何令牌。
+ */
+function createOnlineRoomSummary(room: OnlineRoom): OnlineRoomSummary {
+  return {
+    roomCode: room.roomCode,
+    hostName: room.players.get(room.hostSeat)?.name ?? '房主',
+    onlineCount: [...room.players.values()].filter((player) => player.online).length,
+    maxCount: 4,
+    isPlaying: room.isPlaying,
+    createdAt: room.createdAt,
+  }
+}
+
+/**
  * 管理所有联机房间，并封装规则引擎、机器人调度和玩家重连。
  */
 export class OnlineRoomService {
@@ -219,6 +237,24 @@ export class OnlineRoomService {
   }
 
   /**
+   * 返回当前所有等待开局的房间摘要，按创建时间从新到旧排列。
+   * 已经开局或没有真人在线的房间不在大厅展示。
+   *
+   * @returns 大厅房间列表消息。
+   */
+  public listWaitingRooms(): OnlineServerMessage {
+    const summaries = [...this.rooms.values()]
+      .filter((room) => !room.isPlaying && [...room.players.values()].some((player) => player.online))
+      .map(createOnlineRoomSummary)
+      .sort((left, right) => right.createdAt - left.createdAt)
+
+    return {
+      type: 'room-list',
+      rooms: summaries,
+    }
+  }
+
+  /**
    * 处理连接关闭，保留座位和房间，供自动重连。
    *
    * @param socket 断开的连接。
@@ -262,6 +298,11 @@ export class OnlineRoomService {
         return this.createRoom(socket, sanitizePlayerName(message.playerName))
       case 'join-room':
         return this.joinRoom(socket, message.roomCode, sanitizePlayerName(message.playerName))
+      case 'list-rooms':
+        return {
+          room: undefined,
+          response: this.listWaitingRooms(),
+        }
       case 'resume-room':
         return this.resumeRoom(socket, message.roomCode, message.playerToken)
       case 'configure-bots':

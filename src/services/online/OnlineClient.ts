@@ -159,6 +159,15 @@ export class OnlineClient {
   }
 
   /**
+   * 请求最新的等待开局房间列表。服务端只返回公开摘要，不含令牌。
+   */
+  public requestRoomList(): void {
+    this.send({
+      type: 'list-rooms',
+    })
+  }
+
+  /**
    * 用本地保存的会话恢复座位。
    *
    * @param session 本地保存的房间和身份。

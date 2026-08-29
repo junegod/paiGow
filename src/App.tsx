@@ -268,6 +268,7 @@ function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [onlineRoomCode, setOnlineRoomCode] = useState('')
   const [onlinePlayerName, setOnlinePlayerName] = useState('')
+  const [browserPlayerName, setBrowserPlayerName] = useState('')
   const [isCurrentMatchScored, setIsCurrentMatchScored] = useState(true)
   const [leaveConfirmState, setLeaveConfirmState] = useState<LeaveConfirmState | null>(null)
   const [leaveConfirmError, setLeaveConfirmError] = useState<string | null>(null)
@@ -722,6 +723,72 @@ function App() {
     />
   ) : null
 
+  if (online.mode === 'browser') {
+    return (
+      <main className="app-shell">
+        <section className="lobby-panel online-browser">
+          <p className="lobby-panel__eyebrow">朋友局</p>
+          <h1>联机大厅</h1>
+          <p className="online-room__status">
+            {online.connectionStatus === 'connected'
+              ? (online.isRoomListLoading && online.roomList.length === 0
+                  ? '正在加载房间列表...'
+                  : '已连接服务器')
+              : '正在连接服务器...'}
+          </p>
+
+          <div className="online-browser__create">
+            <input
+              placeholder="我的昵称"
+              value={browserPlayerName}
+              maxLength={12}
+              onChange={(event) => setBrowserPlayerName(event.target.value)}
+            />
+            <button
+              type="button"
+              className="home-action home-action--primary"
+              onClick={() => online.createRoomFromBrowser(browserPlayerName)}
+              disabled={online.connectionStatus !== 'connected'}
+            >
+              新建房间
+            </button>
+          </div>
+
+          <div className="online-browser__list">
+            {online.roomList.length === 0 && !online.isRoomListLoading ? (
+              <p className="online-browser__empty">
+                暂时没有等待中的房间，创建一个叫朋友来吧。
+              </p>
+            ) : null}
+            {online.roomList.map((room) => (
+              <article key={room.roomCode} className="online-browser__room">
+                <div className="online-browser__room-main">
+                  <strong>{room.hostName} 的房间</strong>
+                  <span>
+                    房间码 {room.roomCode}｜{room.onlineCount}/{room.maxCount} 人
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className="home-action"
+                  disabled={room.onlineCount >= room.maxCount}
+                  onClick={() => online.joinRoomFromBrowser(room.roomCode, browserPlayerName)}
+                >
+                  加入
+                </button>
+              </article>
+            ))}
+          </div>
+
+          {online.error ? <p className="online-room__error">{online.error}</p> : null}
+          <button type="button" className="home-action" onClick={online.exitBrowser}>
+            返回首页
+          </button>
+        </section>
+      </main>
+    )
+  }
+
   if (online.mode === 'lobby') {
     return (
       <main className="app-shell">
@@ -795,6 +862,7 @@ function App() {
             setOnlinePlayerName(playerName)
             online.joinRoom(roomCode, playerName)
           }}
+          onOpenBrowser={online.enterBrowser}
           onlineConnectionStatus={online.mode === 'offline' ? online.connectionStatus : undefined}
           onlineRoomCode={online.mode === 'offline' ? onlineRoomCode : undefined}
           onlinePlayerName={online.mode === 'offline' ? onlinePlayerName : undefined}
