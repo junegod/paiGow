@@ -1,6 +1,7 @@
 import WebSocket from 'ws'
 
-const sockets = [new WebSocket('ws://127.0.0.1:8787'), new WebSocket('ws://127.0.0.1:8787')]
+const baseUrl = process.env.ONLINE_WS_URL ?? 'ws://127.0.0.1:8787'
+const sockets = [new WebSocket(baseUrl), new WebSocket(baseUrl)]
 let created = null
 let joined = null
 let guestHostNotice = false
