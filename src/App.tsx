@@ -559,9 +559,14 @@ function App() {
 
   /**
    * 判断菜单离开是否要走内部确认。只有正在进行的普通积分局才扣系统防刷牌分，
-   * 定制牌局、结算页和未加载本地用户时都直接执行原菜单动作。
+   * 定制牌局、结算页、联机对局和未加载本地用户时都直接执行原菜单动作。
+   * 联机中途重开由房主在房间页控制，牌桌菜单不弹本地扣分确认。
    */
   function shouldConfirmMenuLeave(): boolean {
+    if (online.mode !== 'offline') {
+      return false
+    }
+
     return isCurrentMatchScored && currentRound?.phase === 'playing' && Boolean(activeLocalUserId)
   }
 
@@ -571,6 +576,19 @@ function App() {
    */
   function executeMenuLeaveAction(action: LeaveConfirmAction): void {
     setIsMenuOpen(false)
+
+    // 联机模式没有本地扣分逻辑；重开走联机重开，返回走联机离开。
+    if (online.mode !== 'offline') {
+      if (action === 'restart-round') {
+        setIsCurrentMatchScored(true)
+        online.startMatch()
+        return
+      }
+
+      online.leaveOnlineMode()
+      return
+    }
+
     setIsCurrentMatchScored(true)
 
     if (action === 'restart-round') {
