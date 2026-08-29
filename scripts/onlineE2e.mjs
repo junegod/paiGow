@@ -10,7 +10,7 @@
  *   E2E_PLAYWRIGHT_CORE=/path/to/playwright-core
  */
 
-const baseUrl = process.env.E2E_BASE_URL ?? 'http://127.0.0.1:4173'
+const baseUrl = process.env.E2E_BASE_URL ?? 'https://game9.qdkl.cn'
 const playwrightCorePath = process.env.E2E_PLAYWRIGHT_CORE ?? '/Users/june/IdeaProjects/e-law/node_modules/playwright-core/index.mjs'
 
 /** 动态加载 playwright-core，避免项目把它列为常规依赖。 */
@@ -49,6 +49,12 @@ track(guestPage, 'GUEST')
  */
 async function enterLobby(page) {
   await page.goto(baseUrl + '/', { waitUntil: 'domcontentloaded' })
+  // 等待联机连接就绪（「新建房间」按钮可点击），避免 WebSocket 未就绪导致表单禁用。
+  await page.waitForFunction(() => {
+    const button = Array.from(document.querySelectorAll('button'))
+      .find((item) => item.textContent?.includes('新建房间'))
+    return button instanceof HTMLButtonElement && !button.disabled
+  }, { timeout: 15000 }).catch(() => {})
   await page.getByRole('button', { name: /多人对战/ }).click()
   await page.waitForTimeout(500)
 }
@@ -78,6 +84,22 @@ await guestPage.getByRole('button', { name: /^整理$/ }).click()
 await hostPage.waitForTimeout(1200)
 await guestPage.waitForTimeout(1200)
 console.log(JSON.stringify({ step: 'organized', errors }))
+
+// 双视角手牌校验：双方手牌 ID 集合必须完全不同（不同的人拿不同的牌）。
+// 牌面文字在 aria-label 里，textContents 全是空；改读 aria-label。
+const hostCardLabels = await hostPage.locator('.action-panel .card-strip__item button').evaluateAll(
+  (items) => items.map((item) => item.getAttribute('aria-label') ?? ''),
+)
+const guestCardLabels = await guestPage.locator('.action-panel .card-strip__item button').evaluateAll(
+  (items) => items.map((item) => item.getAttribute('aria-label') ?? ''),
+)
+console.log(JSON.stringify({
+  step: 'hand-compare',
+  hostCards: hostCardLabels,
+  guestCards: guestCardLabels,
+  hostJoined: hostCardLabels.join('|'),
+  guestJoined: guestCardLabels.join('|'),
+}))
 
 // 轮到自己时点一张手牌并提交第一个可用动作，验证出牌后的状态流转。
 for (let roundIndex = 0; roundIndex < 4; roundIndex += 1) {
