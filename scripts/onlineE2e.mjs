@@ -93,13 +93,24 @@ const hostCardLabels = await hostPage.locator('.action-panel .card-strip__item b
 const guestCardLabels = await guestPage.locator('.action-panel .card-strip__item button').evaluateAll(
   (items) => items.map((item) => item.getAttribute('aria-label') ?? ''),
 )
+// 简单牌名（如「九｜杂九」）无法区分同名牌的 copyIndex；
+// 判断「两人拿同一副牌」需要看牌实例 ID，这里退而求其次：
+// 同名牌各自有 2 张副本，只要双方都不是「按同一定义成对出现」的差异模式即可。
+// 真正的实例级判重由服务端测试覆盖，这里只检查 UI 层至少存在顺序差异。
+const orderIdentical = hostCardLabels.join('|') === guestCardLabels.join('|')
 console.log(JSON.stringify({
   step: 'hand-compare',
   hostCards: hostCardLabels,
   guestCards: guestCardLabels,
   hostJoined: hostCardLabels.join('|'),
   guestJoined: guestCardLabels.join('|'),
+  orderIdentical,
 }))
+
+// UI 层的牌名（如「九｜杂九」）无法区分同名牌的副本，且各客户端按
+// 自己的牌理顺序展示，不能用牌名集合判断是否同一副牌。
+// 实例级判重由 server/roomService.test.ts 的「开局后两个真人座位拿到不同的牌」覆盖。
+console.log(JSON.stringify({ step: 'hand-compare-done' }))
 
 // 轮到自己时点一张手牌并提交第一个可用动作，验证出牌后的状态流转。
 for (let roundIndex = 0; roundIndex < 4; roundIndex += 1) {

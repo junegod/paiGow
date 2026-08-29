@@ -155,6 +155,61 @@ describe('OnlineRoomService', () => {
     expect(roomState?.state.seatConfigs[0].mode).toBe('bot')
   })
 
+  it('开局后两个真人座位拿到不同的牌', () => {
+    const hostSocket = createFakeSocket()
+    const guestSocket = createFakeSocket()
+
+    const createdResult = service.handleMessage(hostSocket, JSON.stringify({
+      type: 'create-room',
+      playerName: '房主',
+    }))
+    const created = createdResult.toSelf.type === 'room-created'
+      ? createdResult.toSelf
+      : null
+
+    if (!created) {
+      throw new Error('创建房间失败。')
+    }
+
+    service.handleMessage(guestSocket, JSON.stringify({
+      type: 'join-room',
+      roomCode: created.roomCode,
+      playerName: '客人',
+    }))
+
+    const startResult = service.handleMessage(hostSocket, JSON.stringify({
+      type: 'start-match',
+      playerToken: created.player.token,
+    }))
+
+    hostSocket.messages.push(JSON.stringify(startResult.toSelf))
+    if (startResult.toRoom) {
+      hostSocket.messages.push(JSON.stringify(startResult.toRoom.message))
+    }
+
+    // 从房主连接上的最新 room-state 中提取四家手牌。
+    const states = hostSocket.messages
+      .map((data) => JSON.parse(data) as { type: string; state?: { currentRound?: { seats?: Array<{ seat: number; hand: Array<{ id: string }> }> } } })
+      .filter((message) => message.type === 'room-state' && message.state?.currentRound)
+    const latestState = states.at(-1)?.state?.currentRound
+
+    if (!latestState?.seats) {
+      throw new Error('开局后缺少座位状态。')
+    }
+
+    const handIds = latestState.seats.map((seatState) => seatState.hand.map((card) => card.id))
+    // 32 张牌总量守恒：四家手牌拼接后不允许出现重复实例。
+    const allIds = handIds.flat()
+    expect(new Set(allIds).size).toBe(allIds.length)
+    expect(allIds.length).toBe(32)
+    // 任意两家手牌实例集合不能完全相同。
+    for (let left = 0; left < handIds.length; left += 1) {
+      for (let right = left + 1; right < handIds.length; right += 1) {
+        expect(new Set(handIds[left])).not.toEqual(new Set(handIds[right]))
+      }
+    }
+  })
+
   it('房主离开后剩余真人接管房主并可以重新开局', () => {
     const hostSocket = createFakeSocket()
     const guestSocket = createFakeSocket()
