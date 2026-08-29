@@ -29,6 +29,8 @@ export interface OnlineRoomState {
   onlineSeats: SeatId[]
   /** 当前房间是否已经开局。 */
   isPlaying: boolean
+  /** 房主座位；创建者是座位 0，房主离开后自动迁移给剩余真人。 */
+  hostSeat: SeatId
 }
 
 /** 客户端发给服务端的消息。 */
@@ -38,6 +40,7 @@ export type OnlineClientMessage =
   | { type: 'resume-room'; roomCode: string; playerToken: string }
   | { type: 'configure-bots'; playerToken: string; botNames: string[] }
   | { type: 'start-match'; playerToken: string }
+  | { type: 'leave-room'; playerToken: string }
   | { type: 'submit-action'; playerToken: string; action: TurnAction }
   | { type: 'request-room'; playerToken?: string }
   | { type: 'request-state'; playerToken?: string }
@@ -71,6 +74,7 @@ export type OnlineServerMessage =
   | { type: 'start-round-options'; options: StartRoundOptions }
   | { type: 'pong' }
   | { type: 'player-disconnected'; seat: SeatId; name: string }
+  | { type: 'host-changed'; seat: SeatId; name: string }
   | { type: 'player-reconnected'; seat: SeatId; name: string }
   | { type: 'error'; code: OnlineErrorCode; message: string }
 

@@ -107,6 +107,12 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
   const lastSeenRoundNumberRef = useRef(0)
 
   /**
+   * 联机开局仪式快照。
+   * 服务端已经开始真实牌局；这里只保留一份不改动的牌局数据，供动画层播放，关闭后再解锁出牌。
+   */
+  const [openingCeremony, setOpeningCeremony] = useState<RoundState | null>(null)
+
+  /**
    * 将服务端状态转换成当前玩家视角。
    *
    * @param nextState 服务端状态。
@@ -115,6 +121,15 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
   const applyViewerState = useEffectEvent((nextState: MatchState, viewerSeat: SeatId) => {
     latestServerStateRef.current = structuredClone(nextState)
     setMatchState(createMatchStateForViewer(nextState, viewerSeat))
+  })
+
+  /**
+   * 关闭联机开局仪式并清空快照，避免新牌局开始后继续占用旧引用。
+   */
+  const finishOpeningCeremony = useEffectEvent(() => {
+    setSelectedCardIds([])
+    setOpeningCeremony(null)
+    setIsOpeningCeremonyVisible(false)
   })
 
   /**
@@ -191,6 +206,11 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
       return
     }
 
+    if (message.type === 'host-changed') {
+      setNotice(`房主已转移给 ${message.name}。`)
+      return
+    }
+
     if (message.type === 'error') {
       setError(message.message)
 
@@ -263,6 +283,9 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
     lastSeenRoundNumberRef.current = round.roundNumber
     pendingOpeningRoundRef.current = structuredClone(round)
     setSelectedCardIds([])
+
+    // 仪式必须使用当前玩家的座位视角，否则动画里的庄家和抓牌方向会指向别人。
+    setOpeningCeremony(round)
     setIsOpeningCeremonyVisible(true)
   }, [matchState])
 
@@ -350,6 +373,25 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
   }, [botNames, client, player])
 
   /**
+   * 主动离开联机房间。
+   * 先通知服务端把座位交给机器人，再清掉本地会话和牌桌状态，确保能直接回到首页。
+   */
+  function leaveRoom(): void {
+    if (player?.token) {
+      client.leaveRoom(player.token)
+    }
+
+    clearOnlineSession()
+    finishOpeningCeremony()
+    setPlayer(null)
+    setSession(null)
+    setRoom(null)
+    setMatchState(null)
+    setSelectedCardIds([])
+    setMode('offline')
+  }
+
+  /**
    * 把界面动作座位转换回服务端座位后提交。
    *
    * @param action 当前玩家看到的动作。
@@ -409,7 +451,13 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
       visibleActionSeatState: currentSeatState,
       visibleActionHandCards: currentSeatState?.hand ?? [],
       reviewTrick: null,
-      openingCeremony: null,
+      openingCeremony: openingCeremony
+        ? {
+            roundNumber: openingCeremony.roundNumber,
+            dealerSeat: openingCeremony.firstLeader,
+            round: openingCeremony,
+          }
+        : null,
       isOpeningCeremonyActive: isOpeningCeremonyVisible,
       isTrickReviewing: false,
       isDiceReviewing: false,
@@ -431,9 +479,10 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
       submitPreparedAction: submitViewerAction,
       startRound: startMatch,
       restartMatch: startMatch,
-      finishOpeningCeremony: () => setIsOpeningCeremonyVisible(false),
+      finishOpeningCeremony: finishOpeningCeremony,
     }
   }, [
+    openingCeremony,
     isOpeningCeremonyVisible,
     matchState,
     selectedCardIds,
@@ -459,7 +508,7 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
     startMatch,
     submitViewerAction,
     finishRoundAndReveal,
-    leaveOnlineMode: clearOnlineSession,
+    leaveOnlineMode: leaveRoom,
     rulesRevision: '2026-08-28-online-v1',
   }
 }

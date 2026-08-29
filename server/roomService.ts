@@ -49,6 +49,7 @@ interface RoomPlayer {
 export interface OnlineRoom {
   roomCode: string
   createdAt: number
+  hostSeat: SeatId
   players: Map<SeatId, RoomPlayer>
   match: MatchState
   rng: SeededRandom
@@ -130,6 +131,7 @@ function createOnlineRoomState(room: OnlineRoom): OnlineRoomState {
       .filter((player) => player.online)
       .map((player) => player.seat),
     isPlaying: room.isPlaying,
+    hostSeat: room.hostSeat,
   }
 }
 
@@ -266,6 +268,8 @@ export class OnlineRoomService {
         return this.configureBots(message.playerToken, message.botNames)
       case 'start-match':
         return this.startMatch(message.playerToken)
+      case 'leave-room':
+        return this.leaveRoom(message.playerToken)
       case 'submit-action':
         return this.submitAction(message.playerToken, message.action)
       case 'request-room':
@@ -301,6 +305,7 @@ export class OnlineRoomService {
     const room: OnlineRoom = {
       roomCode,
       createdAt: Date.now(),
+      hostSeat: 0,
       players: new Map(),
       match: jiAnDaSuoZiRuleSet.createMatch(seed, seatConfigs),
       rng: new SeededRandom(seed),
@@ -432,7 +437,7 @@ export class OnlineRoomService {
    */
   private configureBots(playerToken: string, botNames: string[]): RoomRequestResult {
     const room = this.getRoomByToken(playerToken)
-    const host = room?.players.get(0)
+    const host = room?.players.get(room.hostSeat)
 
     if (!room || !host || host.token !== playerToken) {
       return { response: this.createError('seat-token-invalid', '身份已失效，请重新加入房间。') }
@@ -473,7 +478,7 @@ export class OnlineRoomService {
    */
   private startMatch(playerToken: string): RoomRequestResult {
     const room = this.getRoomByToken(playerToken)
-    const host = room?.players.get(0)
+    const host = room?.players.get(room.hostSeat)
 
     if (!room || !host || host.token !== playerToken) {
       return { response: this.createError('seat-token-invalid', '身份已失效，请重新加入房间。') }
@@ -489,7 +494,7 @@ export class OnlineRoomService {
 
     room.match.seatConfigs = room.match.seatConfigs.map((seatConfig) => ({
       ...seatConfig,
-      mode: seatConfig.seat === 0 || room.players.has(seatConfig.seat) ? 'human' : 'bot',
+      mode: room.players.has(seatConfig.seat) ? 'human' : 'bot',
     }))
     room.isPlaying = true
     room.rng = new SeededRandom(Math.floor(Math.random() * 0x100000000))
@@ -584,6 +589,65 @@ export class OnlineRoomService {
         room: createOnlineRoomState(room),
         state: cloneJsonValue(room.match),
       },
+    }
+  }
+
+  /**
+   * 玩家主动离开房间。
+   * 座位立即改为机器人接管；若离开的是房主，房主身份迁移给座位号最小的剩余真人。
+   *
+   * @param playerToken 离开玩家令牌。
+   * @returns 成功响应和需要广播的房间状态。
+   */
+  private leaveRoom(playerToken: string): RoomRequestResult {
+    const room = this.getRoomByToken(playerToken)
+    const player = room?.players.get(this.findSeatByToken(room, playerToken))
+
+    if (!room || !player || player.token !== playerToken) {
+      return { response: this.createError('seat-token-invalid', '身份已失效，请重新加入房间。') }
+    }
+
+    const leftSeat = player.seat
+    room.players.delete(leftSeat)
+    room.match.seatConfigs = room.match.seatConfigs.map((seatConfig) =>
+      seatConfig.seat === leftSeat
+        ? { ...seatConfig, name: '村里的机器人', mode: 'bot' }
+        : seatConfig,
+    )
+
+    const nextHost = [...room.players.values()]
+      .filter((candidate) => candidate.online)
+      .sort((left, right) => left.seat - right.seat)[0] ?? null
+    room.hostSeat = nextHost?.seat ?? leftSeat
+
+    if (nextHost) {
+      this.broadcast(room, {
+        type: 'host-changed',
+        seat: nextHost.seat,
+        name: nextHost.name,
+      })
+    }
+
+    // 所有真人都主动离开后销毁房间，避免无效牌局占用服务端内存。
+    if (!nextHost) {
+      this.rooms.delete(room.roomCode)
+    }
+
+    if (nextHost) {
+      this.scheduleBotMoves(room)
+    } else {
+      this.clearBotTimer(room)
+    }
+
+    return {
+      room,
+      player: nextHost,
+      response: {
+        type: 'room-state',
+        room: createOnlineRoomState(room),
+        state: cloneJsonValue(room.match),
+      },
+      broadcastRoom: Boolean(nextHost),
     }
   }
 

@@ -198,6 +198,18 @@ export class OnlineClient {
   }
 
   /**
+   * 明确离开房间。服务端会把该座位交给机器人，并在有剩余真人时迁移房主。
+   *
+   * @param playerToken 当前玩家令牌。
+   */
+  public leaveRoom(playerToken: string): void {
+    this.send({
+      type: 'leave-room',
+      playerToken,
+    })
+  }
+
+  /**
    * 提交当前座位动作。
    *
    * @param playerToken 玩家令牌。

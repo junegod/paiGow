@@ -417,6 +417,17 @@ function App() {
     activeController.toggleCardSelection(cardId)
   }
 
+  /**
+   * 联机时使用服务端房间座位配置，单机时使用本地牌局配置。
+   * 仪式层和抽屉都复用同一个来源，避免大厅改名后界面显示不一致。
+   */
+  const displaySeatConfigs = useMemo(
+    () => (online.mode === 'match' && online.room
+      ? online.room.seatConfigs
+      : currentMatchState?.seatConfigs ?? []),
+    [currentMatchState?.seatConfigs, online.mode, online.room],
+  )
+
   const drawerMeta = useMemo(() => {
     if (!currentRound || !currentMatchState || !drawerState) {
       return null
@@ -440,7 +451,7 @@ function App() {
             plays={trick.plays}
             round={currentRound}
             cardDefinitions={cardDefinitionMap}
-            seatConfigs={currentMatchState.seatConfigs}
+            seatConfigs={displaySeatConfigs}
           />
         ),
       }
@@ -542,6 +553,7 @@ function App() {
     cardDefinitionMap,
     currentRound,
     drawerState,
+    displaySeatConfigs,
   ])
 
   /**
@@ -909,7 +921,7 @@ function App() {
             <TrickArena
               round={currentRound}
               reviewTrick={activeController.reviewTrick}
-              seatConfigs={currentMatchState.seatConfigs}
+              seatConfigs={displaySeatConfigs}
               cardDefinitions={cardDefinitionMap}
               onInspectTrick={(trickIndex) => setDrawerState({ type: 'trick', trickIndex })}
             />
@@ -954,7 +966,7 @@ function App() {
         {activeController.openingCeremony ? (
           <OpeningCeremonyLayer
             round={activeController.openingCeremony.round}
-            seatConfigs={currentMatchState.seatConfigs}
+            seatConfigs={displaySeatConfigs}
             cardDefinitions={cardDefinitionMap}
             onDone={activeController.finishOpeningCeremony}
           />
@@ -1010,7 +1022,7 @@ function App() {
       <div className="table-footer">
         <SettlementPanel
           round={currentRound}
-          seatConfigs={currentMatchState.seatConfigs}
+          seatConfigs={displaySeatConfigs}
           onInspectHistory={() => setDrawerState({ type: 'history' })}
           onNextRound={startNextRoundFromSettlement}
           onRestartMatch={restartMatchFromSettlement}

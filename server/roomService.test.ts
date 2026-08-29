@@ -125,4 +125,84 @@ describe('OnlineRoomService', () => {
     expect(socket.messages.some((data) => data.includes('"type":"match-state"'))).toBe(true)
     service.stop()
   })
+
+  it('玩家主动离开后座位由机器人接管', () => {
+    const hostSocket = createFakeSocket()
+    const createdResult = service.handleMessage(hostSocket, JSON.stringify({
+      type: 'create-room',
+      playerName: '房主',
+    }))
+    const created = createdResult.toSelf.type === 'room-created'
+      ? createdResult.toSelf
+      : null
+
+    if (!created) {
+      throw new Error('创建房间失败。')
+    }
+
+    const leaveResult = service.handleMessage(hostSocket, JSON.stringify({
+      type: 'leave-room',
+      playerToken: created.player.token,
+    }))
+
+    expect(leaveResult.toSelf.type).toBe('room-state')
+
+    const roomState = leaveResult.toSelf.type === 'room-state'
+      ? leaveResult.toSelf
+      : null
+    expect(roomState?.room.onlineSeats).toEqual([])
+    expect(roomState?.room.hostSeat).toBe(0)
+    expect(roomState?.state.seatConfigs[0].mode).toBe('bot')
+  })
+
+  it('房主离开后剩余真人接管房主并可以重新开局', () => {
+    const hostSocket = createFakeSocket()
+    const guestSocket = createFakeSocket()
+    const createdResult = service.handleMessage(hostSocket, JSON.stringify({
+      type: 'create-room',
+      playerName: '房主',
+    }))
+    const created = createdResult.toSelf.type === 'room-created'
+      ? createdResult.toSelf
+      : null
+
+    if (!created) {
+      throw new Error('创建房间失败。')
+    }
+
+    const joinedResult = service.handleMessage(guestSocket, JSON.stringify({
+      type: 'join-room',
+      roomCode: created.roomCode,
+      playerName: '朋友',
+    }))
+    const joined = joinedResult.toSelf.type === 'room-joined'
+      ? joinedResult.toSelf
+      : null
+
+    if (!joined) {
+      throw new Error('加入房间失败。')
+    }
+
+    const leaveResult = service.handleMessage(hostSocket, JSON.stringify({
+      type: 'leave-room',
+      playerToken: created.player.token,
+    }))
+    const roomState = leaveResult.toSelf.type === 'room-state'
+      ? leaveResult.toSelf
+      : null
+
+    expect(roomState?.room.hostSeat).toBe(joined.player.seat)
+
+    const startResult = service.handleMessage(guestSocket, JSON.stringify({
+      type: 'start-match',
+      playerToken: joined.player.token,
+    }))
+
+    expect(startResult.toSelf.type).toBe('room-state')
+
+    const startedState = startResult.toSelf.type === 'room-state'
+      ? startResult.toSelf.state
+      : null
+    expect(startedState?.currentRound).not.toBeNull()
+  })
 })
