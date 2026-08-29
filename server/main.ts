@@ -36,6 +36,16 @@ websocketServer.on('connection', (socket: WebSocket) => {
           }
         }
       }
+
+      // 按座位裁剪的广播：每个在线玩家收到各自视角的专属消息。
+      if (result.seatBroadcast) {
+        for (const item of result.seatBroadcast) {
+          const targetSocket = roomService.findSocketBySeat(item.seat)
+          if (targetSocket && targetSocket.readyState === targetSocket.OPEN) {
+            targetSocket.send(JSON.stringify(item.message))
+          }
+        }
+      }
     } catch {
       socket.send(JSON.stringify({
         type: 'error',

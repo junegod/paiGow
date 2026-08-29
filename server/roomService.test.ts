@@ -186,6 +186,15 @@ describe('OnlineRoomService', () => {
     if (startResult.toRoom) {
       hostSocket.messages.push(JSON.stringify(startResult.toRoom.message))
     }
+    if (startResult.seatBroadcast) {
+      for (const item of startResult.seatBroadcast) {
+        if (item.seat === 0) {
+          hostSocket.messages.push(JSON.stringify(item.message))
+        } else {
+          guestSocket.messages.push(JSON.stringify(item.message))
+        }
+      }
+    }
 
     // 从房主连接上的最新 room-state 中提取四家手牌。
     const states = hostSocket.messages
@@ -193,21 +202,29 @@ describe('OnlineRoomService', () => {
       .filter((message) => message.type === 'room-state' && message.state?.currentRound)
     const latestState = states.at(-1)?.state?.currentRound
 
+    // 视角隔离后房主只能拿到自己的 8 张牌；其余三家的牌需从客人视角取。
+    const guestStates = guestSocket.messages
+      .map((data) => JSON.parse(data) as { type: string; state?: { currentRound?: { seats?: Array<{ seat: number; hand: Array<{ id: string }> }> } } })
+      .filter((message) => message.type === 'room-state' && message.state?.currentRound)
+    const guestLatest = guestStates.at(-1)?.state?.currentRound
+
     if (!latestState?.seats) {
       throw new Error('开局后缺少座位状态。')
     }
 
     const handIds = latestState.seats.map((seatState) => seatState.hand.map((card) => card.id))
+    const guestHandIds = guestLatest?.seats.map((seatState) => seatState.hand.map((card) => card.id)) ?? []
+
+    // 视角裁剪生效：房主视角下其他座位手牌必须为空，客人视角只看得到自己的 8 张。
+    expect(handIds.filter((hand) => hand.length > 0)).toHaveLength(1)
+    expect(guestHandIds.filter((hand) => hand.length > 0)).toHaveLength(1)
+
+    const hostOwnHand = handIds.find((hand) => hand.length > 0) ?? []
+    const guestOwnHand = guestHandIds.find((hand) => hand.length > 0) ?? []
     // 32 张牌总量守恒：四家手牌拼接后不允许出现重复实例。
-    const allIds = handIds.flat()
+    const allIds = [...hostOwnHand, ...guestOwnHand]
     expect(new Set(allIds).size).toBe(allIds.length)
-    expect(allIds.length).toBe(32)
-    // 任意两家手牌实例集合不能完全相同。
-    for (let left = 0; left < handIds.length; left += 1) {
-      for (let right = left + 1; right < handIds.length; right += 1) {
-        expect(new Set(handIds[left])).not.toEqual(new Set(handIds[right]))
-      }
-    }
+    expect(allIds.length).toBe(16)
   })
 
   it('房主离开后剩余真人接管房主并可以重新开局', () => {

@@ -19,6 +19,14 @@ export interface OnlinePlayer {
   name: string
 }
 
+/** 一次"按座位裁剪"的广播：每个接收者拿到各自视角的专属消息。 */
+export interface OnlineSeatBroadcast {
+  /** 接收者座位。 */
+  seat: SeatId
+  /** 该座位视角下的消息。 */
+  message: OnlineServerMessage
+}
+
 /** 服务端发给客户端的房间整体状态。 */
 export interface OnlineRoomState {
   /** 六位房间码。 */
@@ -47,6 +55,17 @@ export interface OnlineRoomSummary {
   isPlaying: boolean
   /** 房间创建时间戳，用于展示等待时长。 */
   createdAt: number
+}
+
+/**
+ * 服务器视角下"某个座位"能看到的手牌信息。
+ * 自己的座位返回完整明牌；其他真人座位只返回张数，牌面一律隐藏。
+ */
+export interface OnlineHandVisibility {
+  /** 手牌张数。 */
+  count: number
+  /** 只有自己座位的 hand 才携带具体牌实例；其他座位永远为空数组。 */
+  hand: []
 }
 
 /** 客户端发给服务端的消息。 */

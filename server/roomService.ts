@@ -16,6 +16,7 @@ import type {
   OnlinePlayer,
   OnlineRoomState,
   OnlineRoomSummary,
+  OnlineSeatBroadcast,
   OnlineServerMessage,
 } from '@/services/online/types'
 
@@ -65,6 +66,8 @@ interface RoomRequestResult {
   player?: OnlinePlayer
   response?: OnlineServerMessage
   broadcastRoom?: boolean
+  /** 按座位裁剪后的房间广播，由入口层分发给各在线接收者。 */
+  seatBroadcast?: OnlineSeatBroadcast[]
 }
 
 /** 房间最大闲置时间；内部朋友局留 6 小时足够，避免服务进程缓慢累积房间。 */
@@ -137,6 +140,46 @@ function createOnlineRoomState(room: OnlineRoom): OnlineRoomState {
 }
 
 /**
+ * 生成"某个座位视角"的牌局状态。
+ * 自己座位的手牌原样返回；其他座位只保留张数，具体牌实例全部剥离，
+ * 确保任何客户端都无法从网络包里读到对手的手牌。
+ *
+ * @param room 当前房间。
+ * @param viewerSeat 接收者的座位。
+ * @returns 裁剪后的 MatchState 深拷贝。
+ */
+function createMatchStateForSeat(room: OnlineRoom, viewerSeat: SeatId): MatchState {
+  const state = cloneJsonValue(room.match)
+
+  if (!state.currentRound) {
+    return state
+  }
+
+  for (const seatState of state.currentRound.seats) {
+    if (seatState.seat !== viewerSeat) {
+      (seatState as { hand: unknown }).hand = []
+    }
+  }
+
+  return state
+}
+
+/**
+ * 生成"某个座位视角"的完整房间消息（房间元信息 + 裁剪后的牌局状态）。
+ *
+ * @param room 当前房间。
+ * @param viewerSeat 接收者的座位。
+ * @returns room-state 消息。
+ */
+function createRoomStateMessageForSeat(room: OnlineRoom, viewerSeat: SeatId): OnlineServerMessage {
+  return {
+    type: 'room-state',
+    room: createOnlineRoomState(room),
+    state: createMatchStateForSeat(room, viewerSeat),
+  }
+}
+
+/**
  * 生成大厅房间列表里的一行摘要。
  *
  * @param room 当前房间。
@@ -187,6 +230,8 @@ export class OnlineRoomService {
   ): {
     toSelf: OnlineServerMessage
     toRoom?: { roomCode: string; message: OnlineServerMessage }
+    /** 按座位裁剪后的房间广播；sendList 携带每个接收者的专属消息。 */
+    seatBroadcast?: OnlineSeatBroadcast[]
   } {
     let message: OnlineClientMessage
 
@@ -208,18 +253,14 @@ export class OnlineRoomService {
     }
 
     if (result.broadcastRoom && result.room && result.player) {
-      const roomStateMessage: OnlineServerMessage = {
-        type: 'room-state',
-        room: createOnlineRoomState(result.room),
-        state: cloneJsonValue(result.room.match),
-      }
-
       return {
         toSelf: result.response,
-        toRoom: {
-          roomCode: result.room.roomCode,
-          message: roomStateMessage,
-        },
+        seatBroadcast: [...result.room.players.values()]
+          .filter((receiver) => receiver.online)
+          .map((receiver) => ({
+            seat: receiver.seat,
+            message: createRoomStateMessageForSeat(result.room!, receiver.seat),
+          })),
       }
     }
 
@@ -272,11 +313,7 @@ export class OnlineRoomService {
           seat: player.seat,
           name: player.name,
         })
-        this.broadcast(room, {
-          type: 'room-state',
-          room: createOnlineRoomState(room),
-          state: cloneJsonValue(room.match),
-        })
+        this.broadcastRoomStatePerSeat(room)
         this.scheduleBotMoves(room)
       }
     }
@@ -365,7 +402,7 @@ export class OnlineRoomService {
         roomCode,
         player: this.toPublicPlayer(player),
         room: createOnlineRoomState(room),
-        state: cloneJsonValue(room.match),
+        state: createMatchStateForSeat(room, player.seat),
       },
     }
   }
@@ -411,7 +448,7 @@ export class OnlineRoomService {
         roomCode: room.roomCode,
         player: this.toPublicPlayer(player),
         room: createOnlineRoomState(room),
-        state: cloneJsonValue(room.match),
+        state: createMatchStateForSeat(room, player.seat),
       },
       broadcastRoom: true,
     }
@@ -447,11 +484,7 @@ export class OnlineRoomService {
         seat: player.seat,
         name: player.name,
       })
-      this.broadcast(room, {
-        type: 'room-state',
-        room: createOnlineRoomState(room),
-        state: cloneJsonValue(room.match),
-      })
+      this.broadcastRoomStatePerSeat(room)
     }
 
     this.scheduleBotMoves(room)
@@ -464,7 +497,7 @@ export class OnlineRoomService {
         roomCode: room.roomCode,
         player: this.toPublicPlayer(player),
         room: createOnlineRoomState(room),
-        state: cloneJsonValue(room.match),
+        state: createMatchStateForSeat(room, player.seat),
       },
     }
   }
@@ -506,7 +539,7 @@ export class OnlineRoomService {
       response: {
         type: 'room-state',
         room: createOnlineRoomState(room),
-        state: cloneJsonValue(room.match),
+        state: createMatchStateForSeat(room, host.seat),
       },
     }
   }
@@ -549,7 +582,7 @@ export class OnlineRoomService {
       response: {
         type: 'room-state',
         room: createOnlineRoomState(room),
-        state: cloneJsonValue(room.match),
+        state: createMatchStateForSeat(room, host.seat),
       },
       broadcastRoom: true,
     }
@@ -587,7 +620,7 @@ export class OnlineRoomService {
       player,
       response: {
         type: 'match-state',
-        state: cloneJsonValue(room.match),
+        state: createMatchStateForSeat(room, player.seat),
       },
       broadcastRoom: true,
     }
@@ -617,7 +650,7 @@ export class OnlineRoomService {
         player,
         response: {
           type: 'match-state',
-          state: cloneJsonValue(room.match),
+          state: createMatchStateForSeat(room, player.seat),
         },
       }
     }
@@ -628,7 +661,7 @@ export class OnlineRoomService {
       response: {
         type: 'room-state',
         room: createOnlineRoomState(room),
-        state: cloneJsonValue(room.match),
+        state: createMatchStateForSeat(room, player.seat),
       },
     }
   }
@@ -682,11 +715,12 @@ export class OnlineRoomService {
 
     return {
       room,
-      player: nextHost,
+      player: nextHost ?? undefined,
       response: {
         type: 'room-state',
         room: createOnlineRoomState(room),
-        state: cloneJsonValue(room.match),
+        // 离开导致房主迁移时可能没有任何真人在线，此时回退为房间默认视角。
+        state: createMatchStateForSeat(room, nextHost?.seat ?? leftSeat),
       },
       broadcastRoom: Boolean(nextHost),
     }
@@ -862,22 +896,43 @@ export class OnlineRoomService {
   }
 
   /**
-   * 广播最新 MatchState 给房间内仍在线的玩家。
+   * 广播最新牌局状态给房间内仍在线的玩家。
+   * 每个接收者只会拿到自己座位的手牌，其他座位手牌一律剥离。
    *
    * @param room 当前房间。
    */
   private broadcastMatchState(room: OnlineRoom): void {
-    this.broadcast(room, {
-      type: 'match-state',
-      state: cloneJsonValue(room.match),
-    })
+    for (const player of room.players.values()) {
+      if (!player.online || player.socket.readyState !== 1) {
+        continue
+      }
+
+      player.socket.send(JSON.stringify({
+        type: 'match-state',
+        state: createMatchStateForSeat(room, player.seat),
+      }))
+    }
+  }
+  /**
+   * 查找某个座位对应的活跃连接，供入口层发送座位专属广播。
+   *
+   * @param seat 目标座位。
+   * @returns 该座位当前的 WebSocket；不在线时返回 null。
+   */
+  public findSocketBySeat(seat: SeatId): RoomSocket | null {
+    for (const room of this.rooms.values()) {
+      const player = room.players.get(seat)
+
+      if (player && player.online && player.socket.readyState === 1) {
+        return player.socket
+      }
+    }
+
+    return null
   }
 
   /**
-   * 向所有在线玩家发送消息。
-   *
-   * @param room 当前房间。
-   * @param message 服务端消息。
+   * 向所有在线玩家发送同一份与视角无关的消息（如断线通知）。
    */
   private broadcast(room: OnlineRoom, message: OnlineServerMessage): void {
     const encodedMessage = JSON.stringify(message)
@@ -886,6 +941,22 @@ export class OnlineRoomService {
       if (player.online && player.socket.readyState === 1) {
         player.socket.send(encodedMessage)
       }
+    }
+  }
+
+  /**
+   * 向房间内所有在线玩家发送"各自视角"的 room-state。
+   * 每个接收者只携带自己座位的手牌，其他座位手牌被剥离。
+   *
+   * @param room 当前房间。
+   */
+  private broadcastRoomStatePerSeat(room: OnlineRoom): void {
+    for (const player of room.players.values()) {
+      if (!player.online || player.socket.readyState !== 1) {
+        continue
+      }
+
+      player.socket.send(JSON.stringify(createRoomStateMessageForSeat(room, player.seat)))
     }
   }
 

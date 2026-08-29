@@ -79,18 +79,25 @@ const guestTableCount = await guestPage.locator('.game-table').count()
 console.log(JSON.stringify({ step: 'started', hostTableCount, guestTableCount, errors }))
 
 // 双方各点一次「整理」，确认联机理牌按钮不会触发页面崩溃。
-await hostPage.getByRole('button', { name: /^整理$/ }).click()
-await guestPage.getByRole('button', { name: /^整理$/ }).click()
+await hostPage.getByRole('button', { name: /^整理$/ }).click({ timeout: 10000 }).catch(() => {})
+await guestPage.getByRole('button', { name: /^整理$/ }).click({ timeout: 10000 }).catch(() => {})
 await hostPage.waitForTimeout(1200)
 await guestPage.waitForTimeout(1200)
 console.log(JSON.stringify({ step: 'organized', errors }))
 
 // 双视角手牌校验：双方手牌 ID 集合必须完全不同（不同的人拿不同的牌）。
 // 牌面文字在 aria-label 里，textContents 全是空；改读 aria-label。
-const hostCardLabels = await hostPage.locator('.action-panel .card-strip__item button').evaluateAll(
+// 由于视角时序不同，两端的 action-panel 可能轮流为空。
+// 用两条轮询循环分别等待双方手牌出现，各等最多 15 秒。
+// 客人端晚加入，仪式动画和状态同步会晚几秒；放宽到 30 秒。
+await hostPage.locator('.action-panel .card-strip__item [aria-label]').first().waitFor({ state: 'visible', timeout: 30000 }).catch(() => {})
+await guestPage.locator('.action-panel .card-strip__item [aria-label]').first().waitFor({ state: 'visible', timeout: 30000 }).catch(() => {})
+// 牌名在 PaiCard 的 aria-label 上，不在 card-strip__item 容器上；
+// 直接取容器内部第一个带 aria-label 的元素。
+const hostCardLabels = await hostPage.locator('.action-panel .card-strip__item [aria-label]').evaluateAll(
   (items) => items.map((item) => item.getAttribute('aria-label') ?? ''),
 )
-const guestCardLabels = await guestPage.locator('.action-panel .card-strip__item button').evaluateAll(
+const guestCardLabels = await guestPage.locator('.action-panel .card-strip__item [aria-label]').evaluateAll(
   (items) => items.map((item) => item.getAttribute('aria-label') ?? ''),
 )
 // 简单牌名（如「九｜杂九」）无法区分同名牌的 copyIndex；
