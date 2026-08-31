@@ -9,6 +9,7 @@ import type {
   StartRoundOptions,
   TurnAction,
 } from '@/rules-core/types'
+import { mapSeatForViewer } from '@/services/online/viewerSeats'
 
 /** 断线后需要恢复的联机会话。 */
 export interface OnlineSessionSnapshot {
@@ -424,17 +425,6 @@ export const ONLINE_CLIENT_PROTOCOL_VERSION = ONLINE_PROTOCOL_VERSION
 
 /** 开局选项协议占位，服务端当前不允许玩家自带手牌。 */
 export type OnlineStartOptions = StartRoundOptions
-
-/**
- * 按玩家看到的桌面方向重排座位。
- *
- * @param seat 服务端逻辑座位。
- * @param viewerSeat 当前玩家逻辑座位。
- * @returns 当前玩家永远映射到 UI 底部座位 0。
- */
-function mapSeatForViewer(seat: SeatId, viewerSeat: SeatId): SeatId {
-  return (((seat - viewerSeat + 4) % 4) as SeatId)
-}
 
 /**
  * 转换可为 null 的必填座位字段，null 语义保持不变。

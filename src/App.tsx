@@ -296,7 +296,8 @@ function App() {
     !activeController.isTrickReviewing &&
     !activeController.isDiceReviewing &&
     activeController.visibleActionSeatState?.seat === activeController.currentSeat &&
-    activeController.currentSeatState?.config.mode === 'human'
+    // 联机模式下面板展示的是"自己座位"，只要当前回合就是自己即可操作。
+    (online.mode === 'match' || activeController.currentSeatState?.config.mode === 'human')
   const actionPanelSelectedCardIds = canUseActionPanel ? activeController.selectedCardIds : []
   const actionPanelPreparedActions = canUseActionPanel ? activeController.selectionPreview.actions : []
   const rollActionForBowl =

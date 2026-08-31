@@ -11,6 +11,7 @@ import {
   readOnlineSession,
   saveOnlineSession,
 } from '@/services/online/OnlineClient'
+import { mapSeatForViewer } from '@/services/online/viewerSeats'
 import type {
   OnlineClientStatus,
   OnlineSessionSnapshot,
@@ -594,27 +595,34 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
     const currentSeatState = currentRound && currentSeat !== null
       ? currentRound.seats.find((seatState) => seatState.seat === currentSeat) ?? null
       : null
-    const humanSeatState = player
-      ? currentRound?.seats.find((seatState) => seatState.seat === player.seat) ?? null
+    /*
+     * 服务端状态使用真实座位，但客户端 createMatchStateForViewer 会把当前玩家
+     * 重排成 UI 底部座位 0。这里必须统一在客户端视角座位列表里找自己，
+     * 否则座位 1/2/3 的玩家会误用服务端座位号查找，导致手牌永远是空。
+     */
+    const humanSeatState = player && currentRound
+      ? currentRound.seats.find((seatState) => seatState.seat === mapSeatForViewer(player.seat, player.seat)) ?? null
       : null
     const humanHandCards = humanSeatState
       ? orderHandBySavedIds(handOrder[humanSeatState.seat], humanSeatState.hand)
       : []
-    const visibleSeatState = currentSeatState?.config.mode === 'human'
-      ? currentSeatState
-      : humanSeatState
-    const visibleHandCards = visibleSeatState && player && visibleSeatState.seat === player.seat
-      ? humanHandCards
-      : currentSeatState?.hand ?? []
+    /*
+     * 底部操作面板永远展示"自己视角"：
+     * - 自己回合：显示自己的座位和手牌（服务端已保证只有自己座位带牌）。
+     * - 他人回合：仍显示自己的座位和手牌，但按钮不可用（canUseActionPanel 由 App 层控制）。
+     * 不再回落到"当前出牌座位的手牌"，那会导致看到别人的牌。
+     */
+    const visibleActionSeatState = humanSeatState ?? currentSeatState
+    const visibleHandCards = humanHandCards
 
     return {
       matchState,
       currentRound,
       currentSeat,
       currentSeatState,
-      currentHandCards: visibleHandCards,
+      currentHandCards: humanHandCards,
       humanSeatState,
-      visibleActionSeatState: currentSeatState,
+      visibleActionSeatState,
       visibleActionHandCards: visibleHandCards,
       reviewTrick: null,
       openingCeremony: openingCeremony
@@ -627,8 +635,12 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
       isOpeningCeremonyActive: isOpeningCeremonyVisible,
       isTrickReviewing: false,
       isDiceReviewing: false,
-      selectionPreview: currentRound && currentSeat !== null
-        ? jiAnDaSuoZiRuleSet.previewSelection(currentRound, currentSeat, selectedCardIds)
+      /*
+       * 选牌预览必须基于"自己的座位"而不是"当前出牌座位"。
+       * 否则别人出牌时，自己点牌会被 previewSelection 判成"不是你的回合"而没有任何按钮。
+       */
+      selectionPreview: currentRound && humanSeatState
+        ? jiAnDaSuoZiRuleSet.previewSelection(currentRound, humanSeatState.seat, selectedCardIds)
         : {
             selectedCardIds,
             actions: [] as PreparedAction[],
