@@ -3274,6 +3274,754 @@ button.pai-card:focus-visible {
   text-align: center;
 }
 
+/*
+ * 联机界面使用独立的桌面工作区宽度，不再套用单机大厅的窄表单布局。
+ * 深绿桌毡、黑漆控制条和细金线来自现有牌桌视觉，信息结构则保持克制清晰。
+ */
+.online-shell {
+  padding: 16px;
+  background:
+    radial-gradient(circle at 50% 12%, rgba(24, 121, 72, 0.2), transparent 36%),
+    linear-gradient(180deg, #050706 0%, #0d0f0e 100%);
+}
+
+.online-panel {
+  width: min(100%, 960px);
+  height: min(100%, 720px);
+  overflow: hidden;
+  border: 1px solid rgba(224, 180, 91, 0.72);
+  border-radius: 22px;
+  color: #f5e8c3;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.025), transparent 38%),
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.012) 0 1px, transparent 1px 9px),
+    #05251a;
+  box-shadow:
+    inset 0 0 0 4px rgba(3, 8, 6, 0.72),
+    inset 0 0 0 5px rgba(224, 180, 91, 0.16),
+    0 28px 70px rgba(0, 0, 0, 0.56);
+}
+
+.online-panel__topbar {
+  min-height: 72px;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 16px;
+  padding: 0 24px;
+  border-bottom: 1px solid rgba(224, 180, 91, 0.42);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent),
+    #0b100e;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.22);
+}
+
+.online-panel__topbar h1,
+.online-brand-title {
+  margin: 0;
+  color: #e9c579;
+  font-size: clamp(1.45rem, 3.5vw, 2rem);
+  font-weight: 900;
+  letter-spacing: 0.14em;
+}
+
+.online-back-button {
+  width: max-content;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 0;
+  padding: 0;
+  color: #e8c578;
+  font-size: 0.9rem;
+  font-weight: 850;
+  background: transparent;
+}
+
+.online-back-button svg {
+  width: 22px;
+  height: 22px;
+}
+
+.online-back-button:hover {
+  color: #fff0bd;
+}
+
+.online-connection {
+  justify-self: end;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: rgba(245, 232, 195, 0.82);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.online-connection > span,
+.online-table-status__connection i {
+  width: 9px;
+  height: 9px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #38d981;
+  box-shadow: 0 0 0 4px rgba(56, 217, 129, 0.12), 0 0 12px rgba(56, 217, 129, 0.55);
+}
+
+.online-connection--connecting > span,
+.online-connection--reconnecting > span,
+.online-table-status__connection--connecting i,
+.online-table-status__connection--reconnecting i {
+  background: #e9b64f;
+  box-shadow: 0 0 0 4px rgba(233, 182, 79, 0.12);
+  animation: online-status-pulse 1.25s ease-in-out infinite;
+}
+
+@keyframes online-status-pulse {
+  50% {
+    opacity: 0.42;
+    transform: scale(0.82);
+  }
+}
+
+.online-panel__body {
+  height: calc(100% - 72px);
+  overflow: auto;
+  padding: clamp(18px, 3vw, 30px);
+}
+
+.online-create-section,
+.online-room-list-section {
+  width: min(100%, 850px);
+  margin: 0 auto;
+}
+
+.online-create-section {
+  padding-bottom: 26px;
+  border-bottom: 1px solid rgba(224, 180, 91, 0.2);
+}
+
+.online-room-list-section {
+  padding-top: 24px;
+}
+
+.online-section-heading {
+  margin-bottom: 14px;
+}
+
+.online-section-heading--row {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.online-section-heading h2 {
+  margin: 0;
+  color: #e5bd68;
+  font-size: 1.12rem;
+  letter-spacing: 0.06em;
+}
+
+.online-section-heading p,
+.online-section-heading--row > span {
+  margin: 5px 0 0;
+  color: rgba(245, 232, 195, 0.56);
+  font-size: 0.76rem;
+  line-height: 1.45;
+}
+
+.online-create-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 150px;
+  align-items: end;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid rgba(224, 180, 91, 0.26);
+  border-radius: 16px;
+  background: rgba(4, 14, 11, 0.56);
+}
+
+.online-create-row label,
+.online-bot-editor label {
+  min-width: 0;
+  display: grid;
+  gap: 7px;
+  color: rgba(245, 232, 195, 0.72);
+  font-size: 0.74rem;
+  font-weight: 800;
+}
+
+.online-create-row input,
+.online-bot-editor input {
+  width: 100%;
+  min-height: 46px;
+  border: 1px solid rgba(224, 180, 91, 0.34);
+  border-radius: 11px;
+  padding: 0 13px;
+  color: #fff2c6;
+  background: rgba(0, 8, 6, 0.78);
+  outline: none;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.online-create-row input:focus,
+.online-bot-editor input:focus {
+  border-color: #52d68a;
+  box-shadow: 0 0 0 3px rgba(82, 214, 138, 0.12);
+}
+
+.online-primary-button,
+.online-row-action,
+.online-danger-button,
+.online-bot-editor > button {
+  min-height: 46px;
+  border-radius: 11px;
+  padding: 0 18px;
+  font-size: 0.9rem;
+  font-weight: 950;
+  letter-spacing: 0.04em;
+  transition: transform 150ms ease, filter 150ms ease, opacity 150ms ease;
+}
+
+.online-primary-button,
+.online-row-action {
+  border: 1px solid #f1d38d;
+  color: #241703;
+  background: linear-gradient(180deg, #ffe39a 0%, #d99b36 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72), 0 8px 18px rgba(0, 0, 0, 0.25);
+}
+
+.online-primary-button:not(:disabled):hover,
+.online-row-action:not(:disabled):hover,
+.online-bot-editor > button:hover {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+}
+
+.online-primary-button:disabled,
+.online-row-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.46;
+  filter: saturate(0.38);
+}
+
+.online-room-list {
+  display: grid;
+  gap: 10px;
+}
+
+.online-room-row {
+  display: grid;
+  grid-template-columns: 46px minmax(150px, 1.4fr) minmax(118px, 0.8fr) 90px 92px;
+  align-items: center;
+  gap: 14px;
+  min-height: 76px;
+  padding: 11px 14px;
+  border: 1px solid rgba(224, 180, 91, 0.28);
+  border-radius: 14px;
+  background: linear-gradient(90deg, rgba(15, 72, 48, 0.78), rgba(5, 25, 18, 0.88));
+  transition: border-color 160ms ease, transform 160ms ease, background 160ms ease;
+}
+
+.online-room-row:hover {
+  border-color: rgba(240, 205, 126, 0.62);
+  background: linear-gradient(90deg, rgba(19, 87, 57, 0.86), rgba(6, 30, 21, 0.94));
+  transform: translateY(-1px);
+}
+
+.online-room-row__avatar {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(234, 196, 112, 0.7);
+  border-radius: 50%;
+  color: #e9c36d;
+  font-weight: 950;
+  background: rgba(0, 19, 13, 0.82);
+}
+
+.online-room-row__owner,
+.online-room-row__code,
+.online-room-row__count {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.online-room-row__owner strong,
+.online-room-row__code strong,
+.online-room-row__count strong {
+  overflow: hidden;
+  color: #f6e9c4;
+  font-size: 0.9rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.online-room-row__code strong {
+  color: #e8c36f;
+  font-size: 1.08rem;
+  letter-spacing: 0.12em;
+}
+
+.online-room-row__owner span,
+.online-room-row__code span,
+.online-room-row__count span {
+  color: rgba(245, 232, 195, 0.5);
+  font-size: 0.68rem;
+}
+
+.online-room-row__count strong {
+  color: #67dc99;
+}
+
+.online-room-empty {
+  min-height: 180px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 6px;
+  border: 1px dashed rgba(224, 180, 91, 0.22);
+  border-radius: 14px;
+  color: rgba(245, 232, 195, 0.54);
+  text-align: center;
+  background: rgba(3, 14, 10, 0.3);
+}
+
+.online-room-empty > span {
+  width: 42px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(224, 180, 91, 0.36);
+  border-radius: 8px;
+  color: #d4aa55;
+}
+
+.online-room-empty strong,
+.online-room-empty p {
+  margin: 0;
+}
+
+.online-room-empty strong {
+  color: rgba(245, 232, 195, 0.76);
+  font-size: 0.9rem;
+}
+
+.online-room-empty p {
+  font-size: 0.72rem;
+}
+
+.online-panel__error {
+  margin: 14px auto 0;
+  color: #ffadad;
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-align: center;
+}
+
+/* 等待房间使用四方桌位置，房主和断线状态不再依赖座位零的隐含规则。 */
+.online-waiting-panel {
+  position: relative;
+  display: grid;
+  grid-template-rows: 72px auto minmax(270px, 1fr) auto;
+}
+
+.online-room-code-panel {
+  position: relative;
+  width: min(calc(100% - 32px), 620px);
+  min-height: 88px;
+  display: grid;
+  grid-template-columns: auto auto auto;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin: 16px auto 0;
+  padding: 12px 20px 22px;
+  border: 1px solid rgba(224, 180, 91, 0.5);
+  border-radius: 16px;
+  background: rgba(4, 31, 21, 0.78);
+  box-shadow: inset 0 0 24px rgba(0, 0, 0, 0.22);
+}
+
+.online-room-code-panel > span {
+  color: rgba(245, 232, 195, 0.58);
+  font-size: 0.78rem;
+}
+
+.online-room-code-panel > strong {
+  color: #f5dfac;
+  font-size: clamp(1.8rem, 5vw, 2.7rem);
+  letter-spacing: 0.13em;
+}
+
+.online-room-code-panel button {
+  min-height: 42px;
+  border: 1px solid rgba(224, 180, 91, 0.52);
+  border-radius: 10px;
+  padding: 0 14px;
+  color: #e9c77d;
+  font-size: 0.78rem;
+  font-weight: 850;
+  background: rgba(8, 18, 14, 0.8);
+}
+
+.online-room-code-panel p {
+  position: absolute;
+  right: 0;
+  bottom: 6px;
+  left: 0;
+  margin: 0;
+  color: rgba(245, 232, 195, 0.48);
+  font-size: 0.68rem;
+  text-align: center;
+}
+
+.online-seat-table {
+  position: relative;
+  width: min(calc(100% - 50px), 690px);
+  min-height: 285px;
+  margin: 12px auto;
+  border: 2px solid rgba(213, 177, 96, 0.22);
+  border-radius: 50px;
+  background:
+    radial-gradient(circle at center, rgba(23, 119, 73, 0.4), transparent 42%),
+    rgba(2, 39, 26, 0.28);
+}
+
+.online-seat-table__mark {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 90px;
+  height: 90px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(224, 180, 91, 0.16);
+  border-radius: 50%;
+  color: rgba(224, 180, 91, 0.15);
+  font-size: 3rem;
+  font-weight: 900;
+  transform: translate(-50%, -50%);
+}
+
+.online-seat-card {
+  position: absolute;
+  width: min(220px, 34vw);
+  min-height: 78px;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 11px 14px;
+  border: 1px solid rgba(224, 180, 91, 0.5);
+  border-radius: 15px;
+  background: linear-gradient(145deg, rgba(10, 24, 18, 0.96), rgba(2, 13, 10, 0.96));
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.3);
+}
+
+.online-seat-card--seat-0 {
+  top: -4px;
+  left: 50%;
+  transform: translate(-50%, 0);
+}
+
+.online-seat-card--seat-1 {
+  top: 50%;
+  right: -12px;
+  transform: translate(0, -50%);
+}
+
+.online-seat-card--seat-2 {
+  bottom: -4px;
+  left: 50%;
+  transform: translate(-50%, 0);
+}
+
+.online-seat-card--seat-3 {
+  top: 50%;
+  left: -12px;
+  transform: translate(0, -50%);
+}
+
+.online-seat-card--disconnected {
+  border-color: rgba(111, 158, 187, 0.62);
+  opacity: 0.72;
+  box-shadow: 0 0 0 5px rgba(45, 128, 181, 0.08), 0 12px 24px rgba(0, 0, 0, 0.3);
+}
+
+.online-seat-card__avatar {
+  width: 46px;
+  height: 46px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(224, 180, 91, 0.62);
+  border-radius: 50%;
+  color: #e5bd68;
+  font-weight: 950;
+  background: linear-gradient(145deg, #34443a, #101612);
+}
+
+.online-seat-card > div:last-child {
+  min-width: 0;
+}
+
+.online-seat-card strong {
+  display: block;
+  overflow: hidden;
+  color: #f3e5bd;
+  font-size: 0.9rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.online-seat-card p {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin: 6px 0 0;
+  font-size: 0.65rem;
+}
+
+.online-seat-card em,
+.online-seat-card p span {
+  border: 1px solid rgba(224, 180, 91, 0.3);
+  border-radius: 999px;
+  padding: 2px 6px;
+  color: rgba(245, 232, 195, 0.66);
+  font-style: normal;
+}
+
+.online-seat-card p .is-online {
+  border-color: rgba(65, 218, 135, 0.34);
+  color: #63dc96;
+}
+
+.online-waiting-actions {
+  display: grid;
+  grid-template-columns: minmax(170px, 1fr) minmax(260px, 1.5fr) auto;
+  align-items: end;
+  gap: 14px;
+  padding: 14px 22px 20px;
+  border-top: 1px solid rgba(224, 180, 91, 0.28);
+  background: rgba(5, 12, 9, 0.76);
+}
+
+.online-waiting-actions__message {
+  display: grid;
+  gap: 4px;
+}
+
+.online-waiting-actions__message strong {
+  color: #e5bd68;
+  font-size: 0.84rem;
+}
+
+.online-waiting-actions__message span {
+  color: rgba(245, 232, 195, 0.54);
+  font-size: 0.68rem;
+  line-height: 1.45;
+}
+
+.online-bot-editor {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+  align-items: end;
+  gap: 7px;
+}
+
+.online-bot-editor input {
+  min-height: 40px;
+  padding: 0 9px;
+  font-size: 0.72rem;
+}
+
+.online-bot-editor > button {
+  min-height: 40px;
+  border: 1px solid rgba(224, 180, 91, 0.42);
+  padding: 0 10px;
+  color: #e7c274;
+  font-size: 0.7rem;
+  background: rgba(3, 24, 16, 0.86);
+}
+
+.online-waiting-actions__buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.online-danger-button {
+  border: 1px solid rgba(226, 103, 87, 0.65);
+  color: #ffd2c9;
+  background: linear-gradient(180deg, rgba(137, 43, 33, 0.92), rgba(81, 23, 20, 0.96));
+}
+
+.online-waiting-actions .online-panel__error {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+/* 联机牌桌状态条嵌在顶部桌沿，连接变化不再用遮罩打断操作。 */
+.online-table-status {
+  position: absolute;
+  z-index: 12;
+  top: 8px;
+  left: 50%;
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  border: 1px solid rgba(255, 213, 101, 0.38);
+  border-radius: 999px;
+  padding: 0 14px;
+  color: rgba(255, 240, 192, 0.78);
+  font-size: 0.68rem;
+  font-weight: 850;
+  background: rgba(4, 12, 9, 0.82);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.28);
+  transform: translateX(-50%);
+}
+
+.online-table-status__connection {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #69dfa0;
+}
+
+.online-table-status__connection--connecting,
+.online-table-status__connection--reconnecting {
+  color: #f0c269;
+}
+
+.table-menu-dropdown button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+@media (max-width: 760px) {
+  .online-shell {
+    padding: 0;
+  }
+
+  .online-panel {
+    width: 100vw;
+    height: 100svh;
+    border-width: 0;
+    border-radius: 0;
+  }
+
+  .online-panel__topbar {
+    min-height: 62px;
+    grid-template-columns: 1fr auto 1fr;
+    padding: max(5px, env(safe-area-inset-top)) 12px 0;
+  }
+
+  .online-panel__topbar h1,
+  .online-brand-title {
+    font-size: 1.15rem;
+  }
+
+  .online-back-button {
+    font-size: 0.75rem;
+  }
+
+  .online-connection {
+    font-size: 0.7rem;
+  }
+
+  .online-panel__body {
+    height: calc(100% - 62px);
+    padding: 16px 12px max(18px, env(safe-area-inset-bottom));
+  }
+
+  .online-create-row {
+    grid-template-columns: 1fr;
+  }
+
+  .online-room-row {
+    grid-template-columns: 40px minmax(0, 1fr) 72px;
+    gap: 10px;
+  }
+
+  .online-room-row__code {
+    grid-column: 2;
+  }
+
+  .online-room-row__count {
+    grid-column: 3;
+    grid-row: 1;
+  }
+
+  .online-room-row .online-row-action {
+    grid-column: 3;
+    grid-row: 2;
+    min-height: 38px;
+    padding: 0 12px;
+  }
+
+  .online-waiting-panel {
+    grid-template-rows: 62px auto minmax(300px, 1fr) auto;
+    overflow: auto;
+  }
+
+  .online-room-code-panel {
+    width: calc(100% - 24px);
+    grid-template-columns: auto 1fr;
+    gap: 7px 10px;
+    padding: 10px 14px 24px;
+  }
+
+  .online-room-code-panel button {
+    grid-column: 1 / -1;
+  }
+
+  .online-seat-table {
+    width: calc(100% - 42px);
+    min-height: 330px;
+    margin: 18px auto;
+  }
+
+  .online-seat-card {
+    width: min(175px, 48vw);
+    min-height: 68px;
+    padding: 9px 10px;
+  }
+
+  .online-seat-card--seat-1 {
+    right: -16px;
+  }
+
+  .online-seat-card--seat-3 {
+    left: -16px;
+  }
+
+  .online-seat-card__avatar {
+    width: 38px;
+    height: 38px;
+  }
+
+  .online-waiting-actions {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+    padding: 13px 12px max(16px, env(safe-area-inset-bottom));
+  }
+
+  .online-bot-editor {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .online-bot-editor > button {
+    min-height: 42px;
+  }
+
+  .online-waiting-actions__buttons > button {
+    flex: 1;
+  }
+}
+
 .home-action,
 .home-action--disabled-wrap button {
   width: 100%;

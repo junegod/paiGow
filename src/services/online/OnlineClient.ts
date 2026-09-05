@@ -1,12 +1,13 @@
 import { ONLINE_PROTOCOL_VERSION } from '@/services/online/types'
 import type {
-  OnlineClientMessage,
+  OnlineClientPayload,
   OnlineServerMessage,
 } from '@/services/online/types'
 import type {
   MatchState,
   SeatId,
   StartRoundOptions,
+  TrickRecord,
   TurnAction,
 } from '@/rules-core/types'
 import { mapSeatForViewer } from '@/services/online/viewerSeats'
@@ -34,7 +35,7 @@ export class OnlineClient {
   private reconnectAttempt = 0
   private disposed = false
   private currentStatus: OnlineClientStatus = 'idle'
-  private pendingMessages: OnlineClientMessage[] = []
+  private pendingMessages: OnlineClientPayload[] = []
   private readonly url: string
 
   /**
@@ -90,8 +91,14 @@ export class OnlineClient {
 
     this.setStatus('connecting')
     const socket = new WebSocket(this.url)
+    // 创建后立即占用当前连接槽，避免 React StrictMode 重跑 effect 时并发建立两条连接。
+    this.socket = socket
     socket.onopen = () => {
-      this.socket = socket
+      if (this.socket !== socket) {
+        socket.close()
+        return
+      }
+
       this.reconnectAttempt = 0
       this.setStatus('connected')
       this.flushPendingMessages()
@@ -113,7 +120,10 @@ export class OnlineClient {
       }
     }
     socket.onclose = () => {
-      this.detachSocket(socket)
+      if (!this.detachSocket(socket)) {
+        return
+      }
+
       this.setStatus('reconnecting')
       this.scheduleReconnect()
     }
@@ -262,14 +272,17 @@ export class OnlineClient {
    *
    * @param message 客户端消息。
    */
-  private send(message: OnlineClientMessage): void {
+  private send(message: OnlineClientPayload): void {
     if (this.socket?.readyState !== WebSocket.OPEN) {
       this.pendingMessages.push(message)
       this.connect()
       return
     }
 
-    this.socket.send(JSON.stringify(message))
+    this.socket.send(JSON.stringify({
+      ...message,
+      protocolVersion: ONLINE_PROTOCOL_VERSION,
+    }))
   }
 
   /**
@@ -329,9 +342,9 @@ export class OnlineClient {
    *
    * @param socket 待解绑的连接。
    */
-  private detachSocket(socket: WebSocket | null): void {
+  private detachSocket(socket: WebSocket | null): boolean {
     if (this.socket !== socket) {
-      return
+      return false
     }
 
     if (socket) {
@@ -343,6 +356,7 @@ export class OnlineClient {
 
     this.socket = null
     this.stopTimers()
+    return true
   }
 
   /**
@@ -456,7 +470,7 @@ function remapOptionalSeat(
 
 /**
  * 把服务端 MatchState 转成当前玩家的牌桌视角。
- * 内部娱乐版仍会收到完整状态；这里同时保证 UI 底部永远是自己的座位。
+ * 服务端已经裁剪对手手牌；这里进一步保证 UI 底部永远是自己的座位。
  *
  * @param state 服务端原始状态。
  * @param viewerSeat 当前玩家逻辑座位。
@@ -484,6 +498,19 @@ export function createMatchStateForViewer(
 
   if (nextState.currentRound) {
     const round = nextState.currentRound
+    /** 将一条已完成回合记录中的所有座位转换为当前玩家视角。 */
+    const remapTrick = (trick: TrickRecord): TrickRecord => ({
+      ...trick,
+      leader: mapSeatForViewer(trick.leader, viewerSeat),
+      winner: mapSeatForViewer(trick.winner, viewerSeat),
+      visibleWinningSeat: mapSeatForViewer(trick.visibleWinningSeat, viewerSeat),
+      rewardOwner: remapOptionalSeat(trick.rewardOwner, viewerSeat),
+      plays: trick.plays.map((play) => ({
+        ...play,
+        seat: mapSeatForViewer(play.seat, viewerSeat),
+      })),
+    })
+
     round.seats = round.seats
       .map((seatState) => ({
         ...seatState,
@@ -492,6 +519,7 @@ export function createMatchStateForViewer(
           ...seatState.config,
           seat: mapSeatForViewer(seatState.config.seat, viewerSeat),
         },
+        wonTricks: seatState.wonTricks.map(remapTrick),
       }))
       .sort((left, right) => left.seat - right.seat)
     round.currentSeat = remapNullableSeat(round.currentSeat, viewerSeat)
@@ -525,18 +553,7 @@ export function createMatchStateForViewer(
       }
     }
 
-    round.publicTrickLog = round.publicTrickLog.map((trick) => ({
-      ...trick,
-      leader: mapSeatForViewer(trick.leader, viewerSeat),
-      winner: mapSeatForViewer(trick.winner, viewerSeat),
-      visibleWinningSeat: mapSeatForViewer(trick.visibleWinningSeat, viewerSeat),
-      forcedDoor: trick.forcedDoor,
-      rewardOwner: remapOptionalSeat(trick.rewardOwner, viewerSeat),
-      plays: trick.plays.map((play) => ({
-        ...play,
-        seat: mapSeatForViewer(play.seat, viewerSeat),
-      })),
-    }))
+    round.publicTrickLog = round.publicTrickLog.map(remapTrick)
 
     if (round.rewardOutcome) {
       round.rewardOutcome = {
@@ -550,6 +567,14 @@ export function createMatchStateForViewer(
       round.settlement = {
         ...round.settlement,
         collector: mapSeatForViewer(round.settlement.collector, viewerSeat),
+        rewardOwner: remapOptionalSeat(round.settlement.rewardOwner, viewerSeat),
+        rewardOutcome: round.settlement.rewardOutcome
+          ? {
+              ...round.settlement.rewardOutcome,
+              owner: mapSeatForViewer(round.settlement.rewardOutcome.owner, viewerSeat),
+              winner: mapSeatForViewer(round.settlement.rewardOutcome.winner, viewerSeat),
+            }
+          : undefined,
         seats: round.settlement.seats.map((seatSettlement) => ({
           ...seatSettlement,
           seat: mapSeatForViewer(seatSettlement.seat, viewerSeat),
@@ -557,6 +582,24 @@ export function createMatchStateForViewer(
       }
     }
   }
+
+  /*
+   * 历史局同样属于当前玩家视角；否则第二局以后累计积分和复盘座位会回到服务端坐标。
+   * 这里用空 replayRounds 的临时 MatchState 复用同一套完整转换，避免遗漏深层座位字段。
+   */
+  nextState.replayRounds = state.replayRounds.map((replayRound) => {
+    const replayView = createMatchStateForViewer({
+      ...state,
+      currentRound: replayRound,
+      replayRounds: [],
+    }, viewerSeat)
+
+    if (!replayView.currentRound) {
+      throw new Error('联机历史局缺少牌局状态。')
+    }
+
+    return replayView.currentRound
+  })
 
   return nextState
 }

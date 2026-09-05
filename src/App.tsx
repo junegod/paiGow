@@ -12,14 +12,11 @@ import { DEFAULT_BOT_DIFFICULTY } from '@/app/botDifficulty'
 import { useLocalPlayerData } from '@/local-data/useLocalPlayerData'
 import type {
   CardDefinition,
-  CurrentTrickState,
   DiceRoll,
   MatchState,
-  PlayedAction,
   RoundState,
   SeatConfig,
   SeatId,
-  TrickRecord,
 } from '@/rules-core/types'
 import {
   DEFAULT_GAME_AUDIO_PREFERENCES,
@@ -27,44 +24,23 @@ import {
 } from '@/ui/audio/gameAudio'
 import { useGameAudio } from '@/ui/audio/useGameAudio'
 import { ActionPanel } from '@/ui/components/ActionPanel'
-import { CardStrip } from '@/ui/components/CardStrip'
 import { DiceBowlControl } from '@/ui/components/DiceBowlControl'
 import { InspectorDrawer } from '@/ui/components/InspectorDrawer'
+import {
+  LeaveConfirmDialog,
+  type LeaveConfirmAction,
+  type LeaveConfirmState,
+} from '@/ui/components/LeaveConfirmDialog'
 import { LobbyPanel } from '@/ui/components/LobbyPanel'
 import { OpeningCeremonyLayer } from '@/ui/components/OpeningCeremonyLayer'
+import { OnlineBrowserPanel } from '@/ui/components/OnlineBrowserPanel'
+import { OnlineRoomPanel } from '@/ui/components/OnlineRoomPanel'
 import { SeatPanel } from '@/ui/components/SeatPanel'
 import { SettingsPanel } from '@/ui/components/SettingsPanel'
 import { SettlementPanel } from '@/ui/components/SettlementPanel'
 import { TrickArena } from '@/ui/components/TrickArena'
+import { createGameDrawerMeta, type DrawerState } from '@/ui/gameInspection'
 import { useAppGestureGuards } from '@/ui/hooks/useAppGestureGuards'
-import {
-  getDeadRewardCoverLabel,
-  shouldCoverCardForDeadReward,
-} from '@/ui/cardPresentation'
-
-type DrawerState =
-  | { type: 'trick'; trickIndex: number }
-  | { type: 'seat'; seat: SeatId }
-  | { type: 'history' }
-  | null
-
-type LeaveConfirmAction = 'restart-round' | 'return-home'
-
-type LeaveConfirmState = {
-  /** 用户准备执行的离局动作，用于确认后继续调度对应菜单行为。 */
-  action: LeaveConfirmAction
-  /** 弹窗主标题，明确当前不是系统浏览器提示。 */
-  title: string
-  /** 弹窗正文，说明积分局中途离开会触发防刷牌扣分。 */
-  message: string
-  /** 确认按钮文案，按具体动作展示“重新开始”或“返回首页”。 */
-  confirmLabel: string
-}
-
-type InspectableTrick = {
-  trick: TrickRecord | CurrentTrickState
-  isCurrent: boolean
-}
 
 function getSeatConfig(seatConfigs: SeatConfig[], seat: SeatId): SeatConfig {
   const seatConfig = seatConfigs.find((item) => item.seat === seat)
@@ -74,77 +50,6 @@ function getSeatConfig(seatConfigs: SeatConfig[], seat: SeatId): SeatConfig {
   }
 
   return seatConfig
-}
-
-/**
- * 统一判断出牌记录是否能公开正面。背面弃牌在整局结算前任何弹窗和赢墩入口都必须显示背面。
- */
-function isPlayPublic(play: PlayedAction, round: RoundState): boolean {
-  return play.pattern.isOpen || play.revealed || round.phase === 'settled'
-}
-
-/**
- * 查找当前墩或历史墩，统一给抽屉展示使用。
- */
-function findTrick(round: RoundState, trickIndex: number): TrickRecord | CurrentTrickState | null {
-  if (round.currentTrick?.trickIndex === trickIndex) {
-    return round.currentTrick
-  }
-
-  return round.publicTrickLog.find((trick) => trick.trickIndex === trickIndex) ?? null
-}
-
-/**
- * trickIndex 只表示第几次出牌回合；真正墩数按本回合张数计算。
- */
-function getTrickPierCount(trick: TrickRecord | CurrentTrickState): number {
-  return 'cardCount' in trick ? trick.cardCount : trick.expectedCardCount
-}
-
-/**
- * 汇总当前局所有可查看回合。当前回合放在列表首位，历史回合倒序展示，
- * 方便排查刚刚发生的可疑出牌。
- */
-function getInspectableTricks(round: RoundState): InspectableTrick[] {
-  const currentTrick = round.currentTrick
-    ? [{ trick: round.currentTrick, isCurrent: true }]
-    : []
-  const historyTricks = [...round.publicTrickLog]
-    .reverse()
-    .map((trick) => ({ trick, isCurrent: false }))
-
-  return [...currentTrick, ...historyTricks]
-}
-
-/**
- * 生成回合记录中的出牌摘要。背面弃牌在结算前只暴露张数，不泄露真实牌面。
- */
-function formatTrickPlaySummary(
-  trick: TrickRecord | CurrentTrickState,
-  round: RoundState,
-  seatConfigs: SeatConfig[],
-): string {
-  return trick.plays
-    .map((play) => {
-      const seatName = getSeatConfig(seatConfigs, play.seat).name
-      const label = isPlayPublic(play, round) ? play.pattern.label : `弃牌${play.cards.length}张`
-      return `${seatName}${label}`
-    })
-    .join(' / ')
-}
-
-/**
- * 回合记录里的赢家文案需要兼容“已结束回合”和“当前进行中回合”。
- */
-function formatTrickStatus(
-  trick: TrickRecord | CurrentTrickState,
-  seatConfigs: SeatConfig[],
-): string {
-  if ('winner' in trick) {
-    return `赢家 ${getSeatConfig(seatConfigs, trick.winner).name}`
-  }
-
-  return `进行中，明面最大 ${getSeatConfig(seatConfigs, trick.currentWinningSeat).name}`
 }
 
 /**
@@ -210,51 +115,6 @@ function formatDoorName(door: string): string {
   return '点子门'
 }
 
-/**
- * 抽屉里的单条出牌记录渲染器，兼容明牌与整局后翻开的背面弃牌。
- */
-function TrickPlayList({
-  plays,
-  round,
-  cardDefinitions,
-  seatConfigs,
-}: {
-  plays: PlayedAction[]
-  round: RoundState
-  cardDefinitions: Record<string, CardDefinition>
-  seatConfigs: SeatConfig[]
-}) {
-  return (
-    <div className="drawer-trick-list">
-      {plays.map((play, index) => {
-        const seatConfig = getSeatConfig(seatConfigs, play.seat)
-        const isPublic = isPlayPublic(play, round)
-
-        return (
-          <article key={`${play.seat}-${index}`} className="drawer-trick">
-            <div className="drawer-trick__head">
-              <strong>{seatConfig.name}</strong>
-              <span>{isPublic ? play.pattern.label : `弃牌 ${play.cards.length} 张`}</span>
-            </div>
-            <CardStrip
-              cards={play.cards}
-              compact
-              spread
-              hidden={!isPublic}
-              getCardHidden={(card, cardIndex) =>
-                isPublic && shouldCoverCardForDeadReward(play, card, cardIndex)}
-              getCardHiddenLabel={(card, cardIndex) =>
-                getDeadRewardCoverLabel(play, card, cardIndex)}
-              cardDefinitions={cardDefinitions}
-            />
-            <p className="drawer-trick__desc">{play.message}</p>
-          </article>
-        )
-      })}
-    </div>
-  )
-}
-
 function App() {
   const localPlayerData = useLocalPlayerData()
   const botDifficulty =
@@ -276,6 +136,15 @@ function App() {
   const [lastVisibleDiceRoll, setLastVisibleDiceRoll] = useState<DiceRoll | null>(null)
   const recordedLocalRoundKeyRef = useRef<string | null>(null)
 
+  /** 本地用户加载完成后为联机大厅补上默认昵称，但不覆盖玩家已经输入的内容。 */
+  useEffect(() => {
+    const nickname = localPlayerData.snapshot?.activeUser?.nickname
+
+    if (nickname) {
+      setBrowserPlayerName((previousName) => previousName || nickname)
+    }
+  }, [localPlayerData.snapshot?.activeUser?.nickname])
+
   const cardDefinitionMap = useMemo(
     () => createCardDefinitionMap(activeController.ruleSet.getAllCardDefinitions()),
     [activeController.ruleSet],
@@ -296,6 +165,7 @@ function App() {
     !activeController.isTrickReviewing &&
     !activeController.isDiceReviewing &&
     activeController.visibleActionSeatState?.seat === activeController.currentSeat &&
+    (online.mode !== 'match' || online.connectionStatus === 'connected') &&
     // 联机模式下面板展示的是"自己座位"，只要当前回合就是自己即可操作。
     (online.mode === 'match' || activeController.currentSeatState?.config.mode === 'human')
   const actionPanelSelectedCardIds = canUseActionPanel ? activeController.selectedCardIds : []
@@ -331,6 +201,7 @@ function App() {
     ? `${activeDiceRoll.first}+${activeDiceRoll.second} ${formatDoorName(activeDiceRoll.door)}`
     : null
   const activeScoredRoundKey =
+    online.mode === 'offline' &&
     isCurrentMatchScored &&
     activeLocalUserId &&
     currentRound?.phase === 'playing'
@@ -384,6 +255,7 @@ function App() {
   useEffect(() => {
     if (
       !isCurrentMatchScored ||
+      online.mode !== 'offline' ||
       !currentMatchState ||
       !currentRound?.settlement ||
       currentRound.phase !== 'settled' ||
@@ -409,6 +281,7 @@ function App() {
     currentRound?.roundNumber,
     currentRound?.settlement,
     isCurrentMatchScored,
+    online.mode,
   ])
 
   /**
@@ -424,139 +297,32 @@ function App() {
    * 仪式层和抽屉都复用同一个来源，避免大厅改名后界面显示不一致。
    */
   const displaySeatConfigs = useMemo(
-    () => (online.mode === 'match' && online.room
-      ? online.room.seatConfigs
-      : currentMatchState?.seatConfigs ?? []),
-    [currentMatchState?.seatConfigs, online.mode, online.room],
+    () => currentMatchState?.seatConfigs ?? [],
+    [currentMatchState?.seatConfigs],
   )
 
+  /**
+   * 联机视角中只有界面座位 0 代表当前本机玩家，不能把本机钱包分数显示到其他真人头像上。
+   */
+  function getVisibleSeatScore(seat: SeatId): number {
+    const localScore = online.mode === 'match' && seat !== 0 ? null : activeLocalScore
+    return currentMatchState ? getTableDisplayScore(currentMatchState, seat, localScore) : 0
+  }
+
   const drawerMeta = useMemo(() => {
-    if (!currentRound || !currentMatchState || !drawerState) {
+    if (!currentRound || !currentMatchState) {
       return null
     }
 
-    if (drawerState.type === 'trick') {
-      const trick = findTrick(currentRound, drawerState.trickIndex)
-
-      if (!trick) {
-        return null
-      }
-
-      return {
-        title: `第 ${drawerState.trickIndex} 回合详情`,
-        subtitle:
-          'winner' in trick
-            ? `赢家：${getSeatConfig(currentMatchState.seatConfigs, trick.winner).name}｜本回合 ${getTrickPierCount(trick)} 墩`
-            : `仍在进行中，本回合 ${getTrickPierCount(trick)} 墩，当前明面最大为 ${trick.currentTargetPattern?.label ?? '无公开牌'}`,
-        content: (
-          <TrickPlayList
-            plays={trick.plays}
-            round={currentRound}
-            cardDefinitions={cardDefinitionMap}
-            seatConfigs={displaySeatConfigs}
-          />
-        ),
-      }
-    }
-
-    if (drawerState.type === 'history') {
-      const inspectableTricks = getInspectableTricks(currentRound)
-
-      return {
-        title: '回合记录',
-        subtitle: `可查 ${inspectableTricks.length} 个回合；背面弃牌整局结束前只显示背面。`,
-        content: (
-          <div className="drawer-history-grid">
-            {inspectableTricks.length > 0 ? (
-              inspectableTricks.map(({ trick, isCurrent }) => (
-                <button
-                  key={`${isCurrent ? 'current' : 'history'}-${trick.trickIndex}`}
-                  type="button"
-                  className="drawer-history-tile"
-                  onClick={() => setDrawerState({ type: 'trick', trickIndex: trick.trickIndex })}
-                >
-                  <span className="drawer-history-tile__head">
-                    <strong>第 {trick.trickIndex} 回合</strong>
-                    <em>{isCurrent ? '当前' : `${getTrickPierCount(trick)} 墩`}</em>
-                  </span>
-                  <span className="drawer-history-tile__meta">
-                    领出 {getSeatConfig(currentMatchState.seatConfigs, trick.leader).name}
-                    ｜{formatTrickStatus(trick, currentMatchState.seatConfigs)}
-                  </span>
-                  <span className="drawer-history-tile__summary">
-                    {formatTrickPlaySummary(
-                      trick,
-                      currentRound,
-                      currentMatchState.seatConfigs,
-                    ) || '还没有出牌记录'}
-                  </span>
-                  <span className="drawer-history-tile__cta">点开查看牌面</span>
-                </button>
-              ))
-            ) : (
-              <p className="drawer-empty">当前还没有任何回合记录。</p>
-            )}
-          </div>
-        ),
-      }
-    }
-
-    const seatState = currentRound.seats.find((seat) => seat.seat === drawerState.seat)
-
-    if (!seatState) {
-      return null
-    }
-
-    return {
-      title: `${seatState.config.name} 的赢墩堆`,
-      subtitle: `共赢 ${seatState.wonPierCount} 墩`,
-      content: (
-        <div className="drawer-stack-grid">
-          {seatState.wonTricks.length > 0 ? (
-            seatState.wonTricks.map((trick) => (
-              <button
-                key={trick.trickIndex}
-                type="button"
-                className="drawer-stack-tile"
-                onClick={() => setDrawerState({ type: 'trick', trickIndex: trick.trickIndex })}
-              >
-                <span className="drawer-stack-tile__head">
-                  <strong>第 {trick.trickIndex} 回合</strong>
-                  <em>赢 {trick.cardCount} 墩</em>
-                </span>
-                <div className="drawer-stack-tile__cards">
-                  {trick.plays.map((play, index) => (
-                    <CardStrip
-                      key={`${trick.trickIndex}-${play.seat}-${index}`}
-                      cards={play.cards}
-                      cardDefinitions={cardDefinitionMap}
-                      hidden={!isPlayPublic(play, currentRound)}
-                      getCardHidden={(card, cardIndex) =>
-                        isPlayPublic(play, currentRound) &&
-                        shouldCoverCardForDeadReward(play, card, cardIndex)}
-                      getCardHiddenLabel={(card, cardIndex) =>
-                        getDeadRewardCoverLabel(play, card, cardIndex)}
-                      mini
-                      spread
-                    />
-                  ))}
-                </div>
-                <span className="drawer-stack-tile__cta">点击查看本回合</span>
-              </button>
-            ))
-          ) : (
-            <p className="drawer-empty">当前还没有赢下任何墩。</p>
-          )}
-        </div>
-      ),
-    }
-  }, [
-    currentMatchState,
-    cardDefinitionMap,
-    currentRound,
-    drawerState,
-    displaySeatConfigs,
-  ])
+    return createGameDrawerMeta({
+      drawerState,
+      round: currentRound,
+      matchState: currentMatchState,
+      cardDefinitions: cardDefinitionMap,
+      seatConfigs: displaySeatConfigs,
+      onSelectTrick: (trickIndex) => setDrawerState({ type: 'trick', trickIndex }),
+    })
+  }, [cardDefinitionMap, currentMatchState, currentRound, displaySeatConfigs, drawerState])
 
   /**
    * 判断菜单离开是否要走内部确认。只有正在进行的普通积分局才扣系统防刷牌分，
@@ -684,6 +450,7 @@ function App() {
   async function persistCurrentSettlementForScore(): Promise<void> {
     if (
       !isCurrentMatchScored ||
+      online.mode !== 'offline' ||
       !currentMatchState ||
       !currentRound?.settlement ||
       currentRound.phase !== 'settled' ||
@@ -718,6 +485,11 @@ function App() {
    * 结算页返回首页时先落积分，再恢复普通积分模式。
    */
   async function restartMatchFromSettlement(): Promise<void> {
+    if (online.mode === 'match') {
+      online.leaveOnlineMode()
+      return
+    }
+
     await persistCurrentSettlementForScore()
     setIsCurrentMatchScored(true)
     activeController.restartMatch()
@@ -727,6 +499,13 @@ function App() {
    * 结算页继续下一局也要先完成本局落账，避免连续开局时漏记积分。
    */
   async function startNextRoundFromSettlement(): Promise<void> {
+    if (online.mode === 'match') {
+      if (online.isHost) {
+        online.startMatch()
+      }
+      return
+    }
+
     await persistCurrentSettlementForScore()
     activeController.startRound()
   }
@@ -744,127 +523,34 @@ function App() {
 
   if (online.mode === 'browser') {
     return (
-      <main className="app-shell">
-        <section className="lobby-panel online-browser">
-          <p className="lobby-panel__eyebrow">朋友局</p>
-          <h1>联机大厅</h1>
-          <p className="online-room__status">
-            {online.connectionStatus === 'connected'
-              ? (online.isRoomListLoading && online.roomList.length === 0
-                  ? '正在加载房间列表...'
-                  : '已连接服务器')
-              : '正在连接服务器...'}
-          </p>
-
-          <div className="online-browser__create">
-            <input
-              placeholder="我的昵称"
-              value={browserPlayerName}
-              maxLength={12}
-              onChange={(event) => setBrowserPlayerName(event.target.value)}
-            />
-            <button
-              type="button"
-              className="home-action home-action--primary"
-              onClick={() => online.createRoomFromBrowser(browserPlayerName)}
-              disabled={online.connectionStatus !== 'connected'}
-            >
-              新建房间
-            </button>
-          </div>
-
-          <div className="online-browser__list">
-            {online.roomList.length === 0 && !online.isRoomListLoading ? (
-              <p className="online-browser__empty">
-                暂时没有等待中的房间，创建一个叫朋友来吧。
-              </p>
-            ) : null}
-            {online.roomList.map((room) => (
-              <article key={room.roomCode} className="online-browser__room">
-                <div className="online-browser__room-main">
-                  <strong>{room.hostName} 的房间</strong>
-                  <span>
-                    房间码 {room.roomCode}｜{room.onlineCount}/{room.maxCount} 人
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  className="home-action"
-                  disabled={room.onlineCount >= room.maxCount}
-                  onClick={() => online.joinRoomFromBrowser(room.roomCode, browserPlayerName)}
-                >
-                  加入
-                </button>
-              </article>
-            ))}
-          </div>
-
-          {online.error ? <p className="online-room__error">{online.error}</p> : null}
-          <button type="button" className="home-action" onClick={online.exitBrowser}>
-            返回首页
-          </button>
-        </section>
-      </main>
+      <OnlineBrowserPanel
+        connectionStatus={online.connectionStatus}
+        rooms={online.roomList}
+        loading={online.isRoomListLoading}
+        playerName={browserPlayerName}
+        error={online.error}
+        onPlayerNameChange={setBrowserPlayerName}
+        onCreateRoom={() => online.createRoomFromBrowser(browserPlayerName)}
+        onJoinRoom={(roomCode) => online.joinRoomFromBrowser(roomCode, browserPlayerName)}
+        onBack={online.exitBrowser}
+      />
     )
   }
 
-  if (online.mode === 'lobby') {
+  if (online.mode === 'lobby' && online.room && online.player) {
     return (
-      <main className="app-shell">
-        <section className="lobby-panel">
-          <div className="online-room">
-            <p className="lobby-panel__eyebrow">朋友局</p>
-            <h1>房间 {online.room?.roomCode ?? online.session?.roomCode}</h1>
-            <p className="online-room__status">
-              {online.connectionStatus === 'connected' ? '已连接服务器' : '正在连接服务器...'}
-              {online.notice ? `｜${online.notice}` : ''}
-            </p>
-            <p className="online-room__notice">
-              把房间码告诉朋友。人齐后由房主点击开始，空座位会用机器人补位。
-            </p>
-            <div className="online-room__seats">
-              {online.room?.seatConfigs.map((seatConfig) => (
-                <article
-                  key={seatConfig.seat}
-                  className={`online-room__seat ${online.room?.onlineSeats.includes(seatConfig.seat) ? 'online-room__seat--online' : ''}`}
-                >
-                  <strong>{seatConfig.name}</strong>
-                  <span>
-                    座位 {seatConfig.seat + 1}
-                    {online.room?.onlineSeats.includes(seatConfig.seat) ? '｜在线' : '｜等待'}
-                    {seatConfig.mode === 'bot' ? '｜机器人' : '｜真人'}
-                  </span>
-                </article>
-              ))}
-            </div>
-            {online.player?.seat === 0 && online.room && !online.room.isPlaying ? (
-              <>
-                <label className="online-room__bot-label">
-                  机器人名字（用空格分隔）
-                  <input
-                    value={online.botNames.join(' ')}
-                    onChange={(event) => online.saveBotNames(event.target.value.split(/\s+/).filter(Boolean))}
-                  />
-                </label>
-                <button type="button" className="home-action home-action--primary" onClick={online.startMatch}>
-                  开始牌局
-                </button>
-              </>
-            ) : null}
-            {online.error ? <p className="online-room__error">{online.error}</p> : null}
-            <button
-              type="button"
-              className="home-action"
-              onClick={() => {
-                online.leaveOnlineMode()
-                window.location.reload()
-              }}
-            >
-              离开房间
-            </button>
-          </div>
-        </section>
-      </main>
+      <OnlineRoomPanel
+        room={online.room}
+        playerSeat={online.player.seat}
+        isHost={online.isHost}
+        connectionStatus={online.connectionStatus}
+        notice={online.notice}
+        error={online.error}
+        botNames={online.botNames}
+        onSaveBotNames={online.saveBotNames}
+        onStartMatch={online.startMatch}
+        onLeaveRoom={online.leaveRoomToBrowser}
+      />
     )
   }
 
@@ -927,6 +613,16 @@ function App() {
         <span className="table-corner table-corner--bottom-left" aria-hidden="true" />
         <span className="table-corner table-corner--bottom-right" aria-hidden="true" />
 
+        {online.mode === 'match' && online.room ? (
+          <div className="online-table-status" aria-live="polite">
+            <span>房间 {online.room.roomCode}</span>
+            <strong className={`online-table-status__connection online-table-status__connection--${online.connectionStatus}`}>
+              <i aria-hidden="true" />
+              {online.connectionStatus === 'connected' ? '已连接' : '正在重连'}
+            </strong>
+          </div>
+        ) : null}
+
         <button
           type="button"
           className={`table-menu-button ${isMenuOpen ? 'table-menu-button--open' : ''}`}
@@ -958,11 +654,13 @@ function App() {
               <button
                 type="button"
                 role="menuitem"
+                disabled={online.mode === 'match' && !online.isHost}
+                title={online.mode === 'match' && !online.isHost ? '只有房主可以重新开始' : undefined}
                 onClick={() => {
                   requestMenuLeave('restart-round')
                 }}
               >
-                重新开始
+                {online.mode === 'match' && !online.isHost ? '等待房主重开' : '重新开始'}
               </button>
               <button
                 type="button"
@@ -991,7 +689,7 @@ function App() {
               seatState={currentRound.seats[2]}
               isCurrent={activeController.currentSeat === 2}
               isDealer={currentRound.firstLeader === 2}
-              score={getTableDisplayScore(currentMatchState, 2, activeLocalScore)}
+              score={getVisibleSeatScore(2)}
               onInspectWonTricks={() => setDrawerState({ type: 'seat', seat: 2 })}
             />
           </div>
@@ -1000,7 +698,7 @@ function App() {
               seatState={currentRound.seats[3]}
               isCurrent={activeController.currentSeat === 3}
               isDealer={currentRound.firstLeader === 3}
-              score={getTableDisplayScore(currentMatchState, 3, activeLocalScore)}
+              score={getVisibleSeatScore(3)}
               onInspectWonTricks={() => setDrawerState({ type: 'seat', seat: 3 })}
             />
           </div>
@@ -1018,7 +716,7 @@ function App() {
               seatState={currentRound.seats[1]}
               isCurrent={activeController.currentSeat === 1}
               isDealer={currentRound.firstLeader === 1}
-              score={getTableDisplayScore(currentMatchState, 1, activeLocalScore)}
+              score={getVisibleSeatScore(1)}
               onInspectWonTricks={() => setDrawerState({ type: 'seat', seat: 1 })}
             />
           </div>
@@ -1027,7 +725,7 @@ function App() {
               seatState={currentRound.seats[0]}
               isCurrent={activeController.currentSeat === 0}
               isDealer={currentRound.firstLeader === 0}
-              score={getTableDisplayScore(currentMatchState, 0, activeLocalScore)}
+              score={getVisibleSeatScore(0)}
               onInspectWonTricks={() => setDrawerState({ type: 'seat', seat: 0 })}
             />
           </div>
@@ -1059,51 +757,13 @@ function App() {
           />
         ) : null}
 
-        {leaveConfirmState ? (
-          <div
-            className="leave-confirm"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="leave-confirm-title"
-            aria-describedby="leave-confirm-desc"
-          >
-            <button
-              type="button"
-              className="leave-confirm__backdrop"
-              aria-label="继续牌桌"
-              onClick={cancelMenuLeave}
-              disabled={isLeavePenaltySubmitting}
-            />
-            <section className="leave-confirm__panel">
-              <p className="leave-confirm__eyebrow">积分局保护</p>
-              <h2 id="leave-confirm-title">{leaveConfirmState.title}</h2>
-              <p id="leave-confirm-desc">{leaveConfirmState.message}</p>
-              {leaveConfirmError ? (
-                <p className="leave-confirm__error">{leaveConfirmError}</p>
-              ) : null}
-              <div className="leave-confirm__actions">
-                <button
-                  type="button"
-                  className="hero-button hero-button--ghost"
-                  onClick={cancelMenuLeave}
-                  disabled={isLeavePenaltySubmitting}
-                >
-                  继续牌桌
-                </button>
-                <button
-                  type="button"
-                  className="hero-button hero-button--primary leave-confirm__danger"
-                  onClick={() => {
-                    void confirmMenuLeaveWithPenalty()
-                  }}
-                  disabled={isLeavePenaltySubmitting}
-                >
-                  {isLeavePenaltySubmitting ? '扣分中...' : leaveConfirmState.confirmLabel}
-                </button>
-              </div>
-            </section>
-          </div>
-        ) : null}
+        <LeaveConfirmDialog
+          state={leaveConfirmState}
+          error={leaveConfirmError}
+          submitting={isLeavePenaltySubmitting}
+          onCancel={cancelMenuLeave}
+          onConfirm={() => void confirmMenuLeaveWithPenalty()}
+        />
       </section>
 
       <div className="table-footer">
@@ -1112,6 +772,7 @@ function App() {
           seatConfigs={displaySeatConfigs}
           onInspectHistory={() => setDrawerState({ type: 'history' })}
           onNextRound={startNextRoundFromSettlement}
+          canStartNextRound={online.mode !== 'match' || online.isHost}
           onRestartMatch={restartMatchFromSettlement}
         />
       </div>

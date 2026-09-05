@@ -29,20 +29,11 @@ websocketServer.on('connection', (socket: WebSocket) => {
       const result = roomService.handleMessage(socket, data.toString())
       socket.send(JSON.stringify(result.toSelf))
 
-      if (result.toRoom) {
-        for (const client of websocketServer.clients) {
-          if (client !== socket && client.readyState === socket.OPEN) {
-            client.send(JSON.stringify(result.toRoom.message))
-          }
-        }
-      }
-
-      // 按座位裁剪的广播：每个在线玩家收到各自视角的专属消息。
-      if (result.seatBroadcast) {
-        for (const item of result.seatBroadcast) {
-          const targetSocket = roomService.findSocketBySeat(item.seat)
-          if (targetSocket && targetSocket.readyState === targetSocket.OPEN) {
-            targetSocket.send(JSON.stringify(item.message))
+      // 房间服务已经按具体房间和接收者生成专属快照，入口层不得再按全局座位号查找连接。
+      if (result.toPlayers) {
+        for (const delivery of result.toPlayers) {
+          if (delivery.socket.readyState === socket.OPEN) {
+            delivery.socket.send(JSON.stringify(delivery.message))
           }
         }
       }

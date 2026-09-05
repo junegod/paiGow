@@ -1,52 +1,83 @@
 import WebSocket from 'ws'
 
-const baseUrl = process.env.ONLINE_WS_URL ?? 'ws://127.0.0.1:8787'
-const sockets = [new WebSocket(baseUrl), new WebSocket(baseUrl)]
-let created = null
-let joined = null
-let guestHostNotice = false
-let ceremonySeen = false
-let actionSubmitted = false
+const url = process.env.ONLINE_WS_URL ?? 'ws://127.0.0.1:8787'
+const protocolVersion = '2026-09-05-room-v2'
 
-sockets[0].on('open', () => sockets[0].send(JSON.stringify({type:'create-room',playerName:'Host'})))
-sockets[0].on('message', data => {
-  const message = JSON.parse(String(data))
-  if (message.type === 'room-created') {
-    created = message
-    sockets[1].send(JSON.stringify({type:'join-room',roomCode:message.roomCode,playerName:'Guest'}))
-  }
-})
-
-sockets[1].on('message', data => {
-  const message = JSON.parse(String(data))
-  if (message.type === 'room-joined') joined = message
-  if (message.type === 'host-changed') guestHostNotice = true
-})
-
-setTimeout(() => {
-  if (!created || !joined) throw new Error('join failed')
-  sockets[0].send(JSON.stringify({type:'start-match',playerToken:created.player.token}))
-  sockets[0].on('message', data => {
-    const message = JSON.parse(String(data))
-    if (message.type === 'room-state' && message.state.currentRound && !ceremonySeen) {
-      ceremonySeen = true
-      sockets[0].send(JSON.stringify({type:'leave-room',playerToken:created.player.token}))
-    }
+/** 等待连接打开，失败时让脚本以非零状态结束。 */
+function waitForOpen(socket) {
+  return new Promise((resolve, reject) => {
+    socket.once('open', resolve)
+    socket.once('error', reject)
   })
-  sockets[1].on('message', data => {
-    const message = JSON.parse(String(data))
-    if (message.type === 'room-state' && message.room.hostSeat === joined.player.seat && message.state.currentRound && !actionSubmitted) {
-      actionSubmitted = true
-      const round = message.state.currentRound
-      const seatState = round.seats.find(item => item.seat === round.currentSeat)
-      const action = { seat: round.currentSeat, intent: 'lead-open', selectedCardIds: seatState.hand.slice(0,1).map(card => card.id) }
-      sockets[1].send(JSON.stringify({type:'submit-action',playerToken:joined.player.token,action}))
-      setTimeout(() => {
-        console.log(JSON.stringify({ok:ceremonySeen,guestHostNotice,actionSubmitted}))
-        sockets.forEach(socket => socket.close())
-      }, 800)
-    }
-  })
-}, 300)
+}
 
-sockets.forEach(socket => socket.on('error', error => { console.error(error); process.exit(1) }))
+/** 等待指定消息类型和附加条件，避免依赖固定 setTimeout。 */
+function waitForMessage(socket, type, predicate = () => true) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      socket.off('message', handleMessage)
+      reject(new Error(`等待 ${type} 消息超时。`))
+    }, 8_000)
+
+    function handleMessage(data) {
+      const message = JSON.parse(String(data))
+      if (message.type !== type || !predicate(message)) {
+        return
+      }
+
+      clearTimeout(timer)
+      socket.off('message', handleMessage)
+      resolve(message)
+    }
+
+    socket.on('message', handleMessage)
+  })
+}
+
+/** 按当前协议发送消息。 */
+function send(socket, payload) {
+  socket.send(JSON.stringify({ ...payload, protocolVersion }))
+}
+
+const hostSocket = new WebSocket(url)
+const guestSocket = new WebSocket(url)
+
+try {
+  await Promise.all([waitForOpen(hostSocket), waitForOpen(guestSocket)])
+  const createdPromise = waitForMessage(hostSocket, 'room-created')
+  send(hostSocket, { type: 'create-room', playerName: 'Host' })
+  const created = await createdPromise
+
+  const joinedPromise = waitForMessage(guestSocket, 'room-joined')
+  send(guestSocket, {
+    type: 'join-room',
+    roomCode: created.roomCode,
+    playerName: 'Guest',
+  })
+  const joined = await joinedPromise
+
+  const transferredPromise = waitForMessage(
+    guestSocket,
+    'room-state',
+    (message) => message.room.hostSeat === joined.player.seat,
+  )
+  send(hostSocket, { type: 'leave-room', playerToken: created.player.token })
+  await transferredPromise
+
+  const startedPromise = waitForMessage(
+    guestSocket,
+    'room-state',
+    (message) => Boolean(message.state.currentRound),
+  )
+  send(guestSocket, { type: 'start-match', playerToken: joined.player.token })
+  await startedPromise
+
+  console.log(JSON.stringify({
+    ok: true,
+    roomCode: created.roomCode,
+    newHostSeat: joined.player.seat,
+  }))
+} finally {
+  hostSocket.close()
+  guestSocket.close()
+}

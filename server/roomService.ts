@@ -1,64 +1,39 @@
-import { randomUUID } from 'node:crypto'
-
 import { SeededRandom } from '@/rules-core/random'
-import type {
-  MatchState,
-  SeatConfig,
-  SeatId,
-  TurnAction,
-} from '@/rules-core/types'
+import type { TurnAction } from '@/rules-core/types'
 import { jiAnDaSuoZiRuleSet } from '@/rules-variants/ji-an-da-suo-zi/ruleSet'
 import { RULE_ENGINE_REVISION } from '@/rules-variants/ji-an-da-suo-zi/engine'
-import { createBotDecisionContext } from '@/rules-variants/ji-an-da-suo-zi/botObservation'
 import type {
   OnlineClientMessage,
   OnlineErrorCode,
   OnlinePlayer,
-  OnlineRoomState,
-  OnlineRoomSummary,
-  OnlineSeatBroadcast,
   OnlineServerMessage,
 } from '@/services/online/types'
+import { parseOnlineClientMessage } from './onlineProtocol'
+import { RoomBotScheduler } from './roomBotScheduler'
+import {
+  addPlayer,
+  expireDisconnectedPlayers,
+  findPlayerBySocket,
+  findSeatByToken,
+  getRoomByPlayerToken,
+  selectNextHost,
+  touchRoom,
+  updateLobbySeatName,
+} from './roomLifecycle'
+import {
+  createDefaultSeatConfigs,
+  createMatchStateForSeat,
+  createMatchStateMessageForSeat,
+  createOnlineRoomState,
+  createOnlineRoomSummary,
+  createRoomCode,
+  createRoomStateMessageForSeat,
+  ROOM_IDLE_TTL_MS,
+  sanitizePlayerName,
+} from './roomModels'
+import type { OnlineRoom, RoomPlayer, RoomSocket } from './roomModels'
 
-/** WebSocket 兼容类型；这里只使用文本帧，避免依赖具体 ws 包类型。 */
-export type RoomSocket = {
-  readonly readyState: number
-  send: (data: string) => void
-  close: (code?: number, reason?: string) => void
-}
-
-/**
- * Node 16 没有 globalThis.structuredClone。
- * 服务端状态都是纯 JSON 数据，使用 JSON 深拷贝保证 CentOS 7 兼容。
- *
- * @param value 需要复制的状态。
- * @returns 与原状态断开引用的副本。
- */
-function cloneJsonValue<T>(value: T): T {
-  return JSON.parse(JSON.stringify(value)) as T
-}
-
-/** 服务端保存的一个真实玩家连接。 */
-interface RoomPlayer {
-  token: string
-  seat: SeatId
-  name: string
-  socket: RoomSocket
-  online: boolean
-}
-
-/** 一个可重连的联机房间。 */
-export interface OnlineRoom {
-  roomCode: string
-  createdAt: number
-  hostSeat: SeatId
-  players: Map<SeatId, RoomPlayer>
-  match: MatchState
-  rng: SeededRandom
-  botDifficulty: 'standard'
-  isPlaying: boolean
-  botMoveTimer: NodeJS.Timeout | null
-}
+export type { RoomSocket } from './roomModels'
 
 /** 客户端请求统一处理后的响应。 */
 interface RoomRequestResult {
@@ -66,134 +41,8 @@ interface RoomRequestResult {
   player?: OnlinePlayer
   response?: OnlineServerMessage
   broadcastRoom?: boolean
-  /** 按座位裁剪后的房间广播，由入口层分发给各在线接收者。 */
-  seatBroadcast?: OnlineSeatBroadcast[]
-}
-
-/** 房间最大闲置时间；内部朋友局留 6 小时足够，避免服务进程缓慢累积房间。 */
-const ROOM_IDLE_TTL_MS = 6 * 60 * 60 * 1000
-/** 断线玩家保留座位的时长，足够覆盖锁屏、电梯和地铁短暂断网。 */
-const DISCONNECT_RETENTION_MS = 3 * 60 * 1000
-/** 服务端机器人行动间隔，客户端仍会播放自己的骰子和回合停留动画。 */
-const BOT_MOVE_DELAY_MS = 700
-
-/**
- * 生成不包含易混淆字符的六位房间码。
- *
- * @returns 例如 274935 这样的纯数字房间码，方便口头告诉朋友。
- */
-function createRoomCode(): string {
-  let code = ''
-
-  for (let index = 0; index < 6; index += 1) {
-    code += String(Math.floor(Math.random() * 10))
-  }
-
-  return code
-}
-
-/**
- * 修剪玩家名字并限制长度。
- *
- * @param value 前端提交的任意名字输入。
- * @returns 服务端统一保存的安全短名字。
- */
-function sanitizePlayerName(value: unknown): string {
-  if (typeof value !== 'string') {
-    return '玩家'
-  }
-
-  const trimmedName = value.trim().slice(0, 12)
-  return trimmedName || '玩家'
-}
-
-/**
- * 创建默认大厅座位。对局开始前主机可以只改机器人名字，真人座位在加入时自动改名。
- *
- * @returns 四个固定座位配置。
- */
-function createDefaultSeatConfigs(): SeatConfig[] {
-  return [
-    { seat: 0, name: '等待玩家', mode: 'bot', color: '#38bdf8' },
-    { seat: 1, name: '村里的阿明', mode: 'bot', color: '#fbbf24' },
-    { seat: 2, name: '村里的老周', mode: 'bot', color: '#f472b6' },
-    { seat: 3, name: '村里的细妹', mode: 'bot', color: '#4ade80' },
-  ]
-}
-
-/**
- * 构造客户端渲染所需的房间公开状态。
- *
- * @param room 当前房间。
- * @returns 不包含 token 和 WebSocket 的状态快照。
- */
-function createOnlineRoomState(room: OnlineRoom): OnlineRoomState {
-  return {
-    roomCode: room.roomCode,
-    seatConfigs: cloneJsonValue(room.match.seatConfigs),
-    onlineSeats: [...room.players.values()]
-      .filter((player) => player.online)
-      .map((player) => player.seat),
-    isPlaying: room.isPlaying,
-    hostSeat: room.hostSeat,
-  }
-}
-
-/**
- * 生成"某个座位视角"的牌局状态。
- * 自己座位的手牌原样返回；其他座位只保留张数，具体牌实例全部剥离，
- * 确保任何客户端都无法从网络包里读到对手的手牌。
- *
- * @param room 当前房间。
- * @param viewerSeat 接收者的座位。
- * @returns 裁剪后的 MatchState 深拷贝。
- */
-function createMatchStateForSeat(room: OnlineRoom, viewerSeat: SeatId): MatchState {
-  const state = cloneJsonValue(room.match)
-
-  if (!state.currentRound) {
-    return state
-  }
-
-  for (const seatState of state.currentRound.seats) {
-    if (seatState.seat !== viewerSeat) {
-      (seatState as { hand: unknown }).hand = []
-    }
-  }
-
-  return state
-}
-
-/**
- * 生成"某个座位视角"的完整房间消息（房间元信息 + 裁剪后的牌局状态）。
- *
- * @param room 当前房间。
- * @param viewerSeat 接收者的座位。
- * @returns room-state 消息。
- */
-function createRoomStateMessageForSeat(room: OnlineRoom, viewerSeat: SeatId): OnlineServerMessage {
-  return {
-    type: 'room-state',
-    room: createOnlineRoomState(room),
-    state: createMatchStateForSeat(room, viewerSeat),
-  }
-}
-
-/**
- * 生成大厅房间列表里的一行摘要。
- *
- * @param room 当前房间。
- * @returns 只包含公开信息的摘要，不携带任何令牌。
- */
-function createOnlineRoomSummary(room: OnlineRoom): OnlineRoomSummary {
-  return {
-    roomCode: room.roomCode,
-    hostName: room.players.get(room.hostSeat)?.name ?? '房主',
-    onlineCount: [...room.players.values()].filter((player) => player.online).length,
-    maxCount: 4,
-    isPlaying: room.isPlaying,
-    createdAt: room.createdAt,
-  }
+  /** 广播时使用完整房间快照，否则只广播牌局状态。 */
+  broadcastKind?: 'room' | 'match'
 }
 
 /**
@@ -202,6 +51,10 @@ function createOnlineRoomSummary(room: OnlineRoom): OnlineRoomSummary {
 export class OnlineRoomService {
   private readonly rooms = new Map<string, OnlineRoom>()
   private maintenanceTimer: NodeJS.Timeout | null = null
+  private readonly botScheduler = new RoomBotScheduler((room) => {
+    touchRoom(room)
+    this.broadcastMatchState(room)
+  })
 
   /**
    * 停止后台维护定时器。测试或进程关闭前调用，避免句柄悬挂。
@@ -213,7 +66,7 @@ export class OnlineRoomService {
     }
 
     for (const room of this.rooms.values()) {
-      this.clearBotTimer(room)
+      this.botScheduler.clear(room)
     }
   }
 
@@ -229,21 +82,17 @@ export class OnlineRoomService {
     rawMessage: string,
   ): {
     toSelf: OnlineServerMessage
-    toRoom?: { roomCode: string; message: OnlineServerMessage }
-    /** 按座位裁剪后的房间广播；sendList 携带每个接收者的专属消息。 */
-    seatBroadcast?: OnlineSeatBroadcast[]
+    /** 已经绑定到具体房间连接的专属消息，入口层只负责逐条发送。 */
+    toPlayers?: Array<{ socket: RoomSocket; message: OnlineServerMessage }>
   } {
-    let message: OnlineClientMessage
-
-    try {
-      message = JSON.parse(rawMessage) as OnlineClientMessage
-    } catch {
+    const parsedResult = parseOnlineClientMessage(rawMessage)
+    if (!parsedResult.message) {
       return {
-        toSelf: this.createError('bad-message', '消息格式不正确，请刷新页面重试。'),
+        toSelf: this.createError(parsedResult.errorCode, parsedResult.errorMessage),
       }
     }
 
-    const result = this.routeMessage(socket, message)
+    const result = this.routeMessage(socket, parsedResult.message)
     this.ensureMaintenanceTimer()
 
     if (!result.response) {
@@ -252,25 +101,17 @@ export class OnlineRoomService {
       }
     }
 
-    if (result.broadcastRoom && result.room && result.player) {
-      return {
-        toSelf: result.response,
-        seatBroadcast: [...result.room.players.values()]
-          .filter((receiver) => receiver.online)
-          .map((receiver) => ({
-            seat: receiver.seat,
-            message: createRoomStateMessageForSeat(result.room!, receiver.seat),
-          })),
-      }
-    }
-
     if (result.broadcastRoom && result.room) {
       return {
         toSelf: result.response,
-        toRoom: {
-          roomCode: result.room.roomCode,
-          message: result.response,
-        },
+        toPlayers: [...result.room.players.values()]
+          .filter((receiver) => receiver.online && receiver.socket !== socket)
+          .map((receiver) => ({
+            socket: receiver.socket,
+            message: result.broadcastKind === 'match'
+              ? createMatchStateMessageForSeat(result.room!, receiver.seat)
+              : createRoomStateMessageForSeat(result.room!, receiver.seat),
+          })),
       }
     }
 
@@ -308,13 +149,31 @@ export class OnlineRoomService {
         }
 
         player.online = false
+        player.disconnectedAt = Date.now()
+        const previousHostSeat = room.hostSeat
+        const nextHost = player.seat === room.hostSeat ? selectNextHost(room) : null
+
+        if (nextHost) {
+          room.hostSeat = nextHost.seat
+        }
+
+        touchRoom(room)
         this.broadcast(room, {
           type: 'player-disconnected',
           seat: player.seat,
           name: player.name,
         })
+
+        if (nextHost && previousHostSeat !== nextHost.seat) {
+          this.broadcast(room, {
+            type: 'host-changed',
+            seat: nextHost.seat,
+            name: nextHost.name,
+          })
+        }
+
         this.broadcastRoomStatePerSeat(room)
-        this.scheduleBotMoves(room)
+        this.botScheduler.schedule(room)
       }
     }
   }
@@ -343,17 +202,17 @@ export class OnlineRoomService {
       case 'resume-room':
         return this.resumeRoom(socket, message.roomCode, message.playerToken)
       case 'configure-bots':
-        return this.configureBots(message.playerToken, message.botNames)
+        return this.configureBots(socket, message.playerToken, message.botNames)
       case 'start-match':
-        return this.startMatch(message.playerToken)
+        return this.startMatch(socket, message.playerToken)
       case 'leave-room':
-        return this.leaveRoom(message.playerToken)
+        return this.leaveRoom(socket, message.playerToken)
       case 'submit-action':
-        return this.submitAction(message.playerToken, message.action)
+        return this.submitAction(socket, message.playerToken, message.action)
       case 'request-room':
-        return this.findRoomByToken(message.playerToken, 'room')
+        return this.findRoomByToken(socket, message.playerToken, 'room')
       case 'request-state':
-        return this.findRoomByToken(message.playerToken, 'state')
+        return this.findRoomByToken(socket, message.playerToken, 'state')
       case 'ping':
         return { response: { type: 'pong' } }
       default:
@@ -371,6 +230,10 @@ export class OnlineRoomService {
    * @returns 创建成功响应。
    */
   private createRoom(socket: RoomSocket, playerName: string): RoomRequestResult {
+    if (findPlayerBySocket(this.rooms.values(), socket)) {
+      return { response: this.createError('already-in-room', '你已经在一个房间中，请先离开当前房间。') }
+    }
+
     let roomCode = createRoomCode()
 
     while (this.rooms.has(roomCode)) {
@@ -378,11 +241,13 @@ export class OnlineRoomService {
     }
 
     const seed = Math.floor(Math.random() * 0x100000000)
+    const now = Date.now()
     const seatConfigs = createDefaultSeatConfigs()
-    seatConfigs[0] = { ...seatConfigs[0], name: playerName, mode: 'bot' }
+    seatConfigs[0] = { ...seatConfigs[0], name: playerName, mode: 'human' }
     const room: OnlineRoom = {
       roomCode,
-      createdAt: Date.now(),
+      createdAt: now,
+      lastActivityAt: now,
       hostSeat: 0,
       players: new Map(),
       match: jiAnDaSuoZiRuleSet.createMatch(seed, seatConfigs),
@@ -390,8 +255,9 @@ export class OnlineRoomService {
       botDifficulty: 'standard',
       isPlaying: false,
       botMoveTimer: null,
+      revision: 0,
     }
-    const player = this.addPlayer(room, socket, playerName)
+    const player = addPlayer(room, socket, playerName)
     this.rooms.set(roomCode, room)
 
     return {
@@ -420,11 +286,17 @@ export class OnlineRoomService {
     roomCode: string,
     playerName: string,
   ): RoomRequestResult {
+    if (findPlayerBySocket(this.rooms.values(), socket)) {
+      return { response: this.createError('already-in-room', '你已经在一个房间中，请先离开当前房间。') }
+    }
+
     const room = this.rooms.get(roomCode)
 
     if (!room) {
       return { response: this.createError('room-not-found', '房间码不存在，请检查后再试。') }
     }
+
+    expireDisconnectedPlayers(room, Date.now())
 
     const emptySeat = ([0, 1, 2, 3] as const)
       .find((seat) => !room.players.has(seat))
@@ -437,8 +309,9 @@ export class OnlineRoomService {
       return { response: this.createError('match-started', '牌局已经开局，不能中途加入。') }
     }
 
-    const player = this.addPlayer(room, socket, playerName, emptySeat)
-    this.updateLobbySeatName(room, emptySeat, playerName, 'human')
+    const player = addPlayer(room, socket, playerName, emptySeat)
+    updateLobbySeatName(room, emptySeat, playerName, 'human')
+    touchRoom(room)
 
     return {
       room,
@@ -451,6 +324,7 @@ export class OnlineRoomService {
         state: createMatchStateForSeat(room, player.seat),
       },
       broadcastRoom: true,
+      broadcastKind: 'room',
     }
   }
 
@@ -468,15 +342,22 @@ export class OnlineRoomService {
     playerToken: string,
   ): RoomRequestResult {
     const room = this.rooms.get(roomCode)
-    const player = room?.players.get(this.findSeatByToken(room, playerToken))
+    const player = room?.players.get(findSeatByToken(room, playerToken))
 
     if (!room || !player || player.token !== playerToken) {
       return { response: this.createError('seat-token-invalid', '房间已结束，请重新创建或加入。') }
     }
 
     const wasOffline = !player.online
+
+    if (player.socket !== socket && player.socket.readyState === 1) {
+      player.socket.close(4001, '账号已在新的连接恢复')
+    }
+
     player.socket = socket
     player.online = true
+    player.disconnectedAt = null
+    touchRoom(room)
 
     if (wasOffline) {
       this.broadcast(room, {
@@ -487,7 +368,7 @@ export class OnlineRoomService {
       this.broadcastRoomStatePerSeat(room)
     }
 
-    this.scheduleBotMoves(room)
+    this.botScheduler.schedule(room)
 
     return {
       room,
@@ -509,11 +390,15 @@ export class OnlineRoomService {
    * @param botNames 三个机器人名字。
    * @returns 广播房间状态的内部结果。
    */
-  private configureBots(playerToken: string, botNames: string[]): RoomRequestResult {
-    const room = this.getRoomByToken(playerToken)
+  private configureBots(
+    socket: RoomSocket,
+    playerToken: string,
+    botNames: string[],
+  ): RoomRequestResult {
+    const room = getRoomByPlayerToken(this.rooms.values(), playerToken)
     const host = room?.players.get(room.hostSeat)
 
-    if (!room || !host || host.token !== playerToken) {
+    if (!room || !host || host.token !== playerToken || host.socket !== socket || !host.online) {
       return { response: this.createError('seat-token-invalid', '身份已失效，请重新加入房间。') }
     }
 
@@ -521,17 +406,24 @@ export class OnlineRoomService {
       return { response: this.createError('match-started', '牌局已经开始，不能修改座位。') }
     }
 
+    const safeBotNames = Array.isArray(botNames) ? botNames : []
+    const botSeats = room.match.seatConfigs
+      .filter((candidate) => !room.players.has(candidate.seat))
+      .map((candidate) => candidate.seat)
+
     room.match.seatConfigs = room.match.seatConfigs.map((seatConfig) => {
-      if (seatConfig.seat === 0 || seatConfig.mode !== 'bot') {
+      if (room.players.has(seatConfig.seat)) {
         return seatConfig
       }
 
-      const botIndex = seatConfig.seat - 1
+      const botIndex = botSeats.indexOf(seatConfig.seat)
       return {
         ...seatConfig,
-        name: sanitizePlayerName(botNames[botIndex]),
+        name: sanitizePlayerName(safeBotNames[botIndex]),
+        mode: 'bot',
       }
     })
+    touchRoom(room)
 
     return {
       room,
@@ -541,6 +433,8 @@ export class OnlineRoomService {
         room: createOnlineRoomState(room),
         state: createMatchStateForSeat(room, host.seat),
       },
+      broadcastRoom: true,
+      broadcastKind: 'room',
     }
   }
 
@@ -550,11 +444,15 @@ export class OnlineRoomService {
    * @param playerToken 主机令牌。
    * @returns 广播开局状态的内部结果。
    */
-  private startMatch(playerToken: string): RoomRequestResult {
-    const room = this.getRoomByToken(playerToken)
+  private startMatch(socket: RoomSocket, playerToken: string): RoomRequestResult {
+    const room = getRoomByPlayerToken(this.rooms.values(), playerToken)
     const host = room?.players.get(room.hostSeat)
 
     if (!room || !host || host.token !== playerToken) {
+      return { response: this.createError('not-host', '只有当前房主可以开始牌局。') }
+    }
+
+    if (host.socket !== socket || !host.online) {
       return { response: this.createError('seat-token-invalid', '身份已失效，请重新加入房间。') }
     }
 
@@ -574,7 +472,8 @@ export class OnlineRoomService {
     room.rng = new SeededRandom(Math.floor(Math.random() * 0x100000000))
     const startResult = jiAnDaSuoZiRuleSet.startRound(room.match, room.rng)
     room.match = startResult.match
-    this.scheduleBotMoves(room)
+    touchRoom(room)
+    this.botScheduler.schedule(room)
 
     return {
       room,
@@ -585,6 +484,7 @@ export class OnlineRoomService {
         state: createMatchStateForSeat(room, host.seat),
       },
       broadcastRoom: true,
+      broadcastKind: 'room',
     }
   }
 
@@ -595,22 +495,33 @@ export class OnlineRoomService {
    * @param action 前端转发的动作。
    * @returns 广播最新状态的内部结果。
    */
-  private submitAction(playerToken: string, action: TurnAction): RoomRequestResult {
-    const room = this.getRoomByToken(playerToken)
-    const player = room?.players.get(this.findSeatByToken(room, playerToken))
+  private submitAction(
+    socket: RoomSocket,
+    playerToken: string,
+    action: TurnAction,
+  ): RoomRequestResult {
+    const room = getRoomByPlayerToken(this.rooms.values(), playerToken)
+    const player = room?.players.get(findSeatByToken(room, playerToken))
 
-    if (!room || !player || player.token !== playerToken) {
+    if (
+      !room ||
+      !player ||
+      player.token !== playerToken ||
+      player.socket !== socket ||
+      !player.online
+    ) {
       return { response: this.createError('seat-token-invalid', '身份已失效，请重新加入房间。') }
     }
 
-    if (action.seat !== player.seat) {
+    if (!action || typeof action !== 'object' || action.seat !== player.seat) {
       return { response: this.createError('invalid-action', '不能代替其他玩家操作。') }
     }
 
     try {
       const result = jiAnDaSuoZiRuleSet.submitAction(room.match, action, room.rng)
       room.match = result.match
-      this.scheduleBotMoves(room)
+      touchRoom(room)
+      this.botScheduler.schedule(room)
     } catch {
       return { response: this.createError('invalid-action', '这个动作已经过期或不合法。') }
     }
@@ -620,9 +531,12 @@ export class OnlineRoomService {
       player,
       response: {
         type: 'match-state',
+        roomCode: room.roomCode,
+        revision: room.revision,
         state: createMatchStateForSeat(room, player.seat),
       },
       broadcastRoom: true,
+      broadcastKind: 'match',
     }
   }
 
@@ -634,13 +548,20 @@ export class OnlineRoomService {
    * @returns 查询响应。
    */
   private findRoomByToken(
+    socket: RoomSocket,
     playerToken: string | undefined,
     responseKind: 'room' | 'state',
   ): RoomRequestResult {
-    const room = this.getRoomByToken(playerToken)
-    const player = room?.players.get(this.findSeatByToken(room, playerToken))
+    const room = getRoomByPlayerToken(this.rooms.values(), playerToken)
+    const player = room?.players.get(findSeatByToken(room, playerToken))
 
-    if (!room || !player || player.token !== playerToken) {
+    if (
+      !room ||
+      !player ||
+      player.token !== playerToken ||
+      player.socket !== socket ||
+      !player.online
+    ) {
       return { response: this.createError('seat-token-invalid', '身份已失效，请重新加入房间。') }
     }
 
@@ -650,6 +571,8 @@ export class OnlineRoomService {
         player,
         response: {
           type: 'match-state',
+          roomCode: room.roomCode,
+          revision: room.revision,
           state: createMatchStateForSeat(room, player.seat),
         },
       }
@@ -673,11 +596,16 @@ export class OnlineRoomService {
    * @param playerToken 离开玩家令牌。
    * @returns 成功响应和需要广播的房间状态。
    */
-  private leaveRoom(playerToken: string): RoomRequestResult {
-    const room = this.getRoomByToken(playerToken)
-    const player = room?.players.get(this.findSeatByToken(room, playerToken))
+  private leaveRoom(socket: RoomSocket, playerToken: string): RoomRequestResult {
+    const room = getRoomByPlayerToken(this.rooms.values(), playerToken)
+    const player = room?.players.get(findSeatByToken(room, playerToken))
 
-    if (!room || !player || player.token !== playerToken) {
+    if (
+      !room ||
+      !player ||
+      player.token !== playerToken ||
+      player.socket !== socket
+    ) {
       return { response: this.createError('seat-token-invalid', '身份已失效，请重新加入房间。') }
     }
 
@@ -689,10 +617,9 @@ export class OnlineRoomService {
         : seatConfig,
     )
 
-    const nextHost = [...room.players.values()]
-      .filter((candidate) => candidate.online)
-      .sort((left, right) => left.seat - right.seat)[0] ?? null
+    const nextHost = selectNextHost(room)
     room.hostSeat = nextHost?.seat ?? leftSeat
+    touchRoom(room)
 
     if (nextHost) {
       this.broadcast(room, {
@@ -708,50 +635,20 @@ export class OnlineRoomService {
     }
 
     if (nextHost) {
-      this.scheduleBotMoves(room)
+      this.botScheduler.schedule(room)
     } else {
-      this.clearBotTimer(room)
+      this.botScheduler.clear(room)
     }
 
     return {
       room,
       player: nextHost ?? undefined,
       response: {
-        type: 'room-state',
-        room: createOnlineRoomState(room),
-        // 离开导致房主迁移时可能没有任何真人在线，此时回退为房间默认视角。
-        state: createMatchStateForSeat(room, nextHost?.seat ?? leftSeat),
+        type: 'room-left',
       },
       broadcastRoom: Boolean(nextHost),
+      broadcastKind: 'room',
     }
-  }
-
-  /**
-   * 向房间添加玩家并标记在线。
-   *
-   * @param room 目标房间。
-   * @param socket 玩家连接。
-   * @param playerName 玩家名字。
-   * @param seat 可选固定座位。
-   * @returns 新增玩家。
-   */
-  private addPlayer(
-    room: OnlineRoom,
-    socket: RoomSocket,
-    playerName: string,
-    seat?: SeatId,
-  ): RoomPlayer {
-    const targetSeat = seat ?? 0
-    const player: RoomPlayer = {
-      token: randomUUID(),
-      seat: targetSeat,
-      name: playerName,
-      socket,
-      online: true,
-    }
-
-    room.players.set(targetSeat, player)
-    return player
   }
 
   /**
@@ -769,133 +666,6 @@ export class OnlineRoomService {
   }
 
   /**
-   * 根据座位在大厅态更新名字和模式。
-   *
-   * @param room 当前房间。
-   * @param seat 座位。
-   * @param name 玩家名字。
-   * @param mode 座位模式。
-   */
-  private updateLobbySeatName(
-    room: OnlineRoom,
-    seat: SeatId,
-    name: string,
-    mode: 'human' | 'bot',
-  ): void {
-    room.match.seatConfigs = room.match.seatConfigs.map((seatConfig) =>
-      seatConfig.seat === seat
-        ? { ...seatConfig, name, mode }
-        : seatConfig,
-    )
-  }
-
-  /**
-   * 通过 token 反查座位。找不到时返回 0，由调用方再校验 token。
-   *
-   * @param room 目标房间。
-   * @param playerToken 玩家令牌。
-   * @returns 对应座位，找不到时为 0。
-   */
-  private findSeatByToken(room: OnlineRoom | undefined, playerToken: string | undefined): SeatId {
-    if (!room || !playerToken) {
-      return 0
-    }
-
-    for (const [seat, player] of room.players.entries()) {
-      if (player.token === playerToken) {
-        return seat
-      }
-    }
-
-    return 0
-  }
-
-  /**
-   * 只根据 token 查房间，具体座位校验交给调用方。
-   *
-   * @param playerToken 玩家令牌。
-   * @returns 对应房间。
-   */
-  private getRoomByToken(playerToken: string | undefined): OnlineRoom | undefined {
-    if (!playerToken) {
-      return undefined
-    }
-
-    for (const room of this.rooms.values()) {
-      const seat = this.findSeatByToken(room, playerToken)
-      const player = room.players.get(seat)
-
-      if (player?.token === playerToken) {
-        return room
-      }
-    }
-
-    return undefined
-  }
-
-  /**
-   * 服务端机器人循环。每次只走一步，保证所有客户端都能看清过程。
-   *
-   * @param room 当前房间。
-   */
-  private scheduleBotMoves(room: OnlineRoom): void {
-    this.clearBotTimer(room)
-
-    if (!room.isPlaying || room.players.size === 0) {
-      return
-    }
-
-    const delay = room.match.currentRound?.phase === 'awaiting-reveal'
-      ? 2_000
-      : BOT_MOVE_DELAY_MS
-
-    room.botMoveTimer = setTimeout(() => {
-      room.botMoveTimer = null
-      this.advanceBotsOnce(room)
-    }, delay)
-
-    room.botMoveTimer.unref()
-  }
-
-  /**
-   * 执行一次机器人动作或等待揭示，然后按最新状态继续调度。
-   *
-   * @param room 当前房间。
-   */
-  private advanceBotsOnce(room: OnlineRoom): void {
-    const round = room.match.currentRound
-
-    if (!round || room.match.phase === 'settled' || room.players.size === 0) {
-      return
-    }
-
-    if (round.phase === 'awaiting-reveal') {
-      room.match = jiAnDaSuoZiRuleSet.finishRoundAndReveal(room.match).match
-      this.broadcastMatchState(room)
-      this.scheduleBotMoves(room)
-      return
-    }
-
-    const currentSeat = round.currentSeat
-    const currentSeatState = currentSeat === null
-      ? null
-      : round.seats.find((seatState) => seatState.seat === currentSeat) ?? null
-
-    if (currentSeat === null || !currentSeatState || currentSeatState.config.mode !== 'bot') {
-      return
-    }
-
-    const legalActions = jiAnDaSuoZiRuleSet.listTurnActions(round, currentSeat)
-    const botStrategy = jiAnDaSuoZiRuleSet.getBotStrategy()
-    const botAction = botStrategy.chooseAction(
-      createBotDecisionContext(round, currentSeat, legalActions),
-    )
-    room.match = jiAnDaSuoZiRuleSet.submitAction(room.match, botAction, room.rng).match
-    this.broadcastMatchState(room)
-    this.scheduleBotMoves(room)
-  }
-
-  /**
    * 广播最新牌局状态给房间内仍在线的玩家。
    * 每个接收者只会拿到自己座位的手牌，其他座位手牌一律剥离。
    *
@@ -909,28 +679,12 @@ export class OnlineRoomService {
 
       player.socket.send(JSON.stringify({
         type: 'match-state',
+        roomCode: room.roomCode,
+        revision: room.revision,
         state: createMatchStateForSeat(room, player.seat),
       }))
     }
   }
-  /**
-   * 查找某个座位对应的活跃连接，供入口层发送座位专属广播。
-   *
-   * @param seat 目标座位。
-   * @returns 该座位当前的 WebSocket；不在线时返回 null。
-   */
-  public findSocketBySeat(seat: SeatId): RoomSocket | null {
-    for (const room of this.rooms.values()) {
-      const player = room.players.get(seat)
-
-      if (player && player.online && player.socket.readyState === 1) {
-        return player.socket
-      }
-    }
-
-    return null
-  }
-
   /**
    * 向所有在线玩家发送同一份与视角无关的消息（如断线通知）。
    */
@@ -961,18 +715,6 @@ export class OnlineRoomService {
   }
 
   /**
-   * 清理机器人定时器，重连或房间销毁前必须调用。
-   *
-   * @param room 当前房间。
-   */
-  private clearBotTimer(room: OnlineRoom): void {
-    if (room.botMoveTimer !== null) {
-      clearTimeout(room.botMoveTimer)
-      room.botMoveTimer = null
-    }
-  }
-
-  /**
    * 确保房间过期维护循环已经启动。
    */
   private ensureMaintenanceTimer(): void {
@@ -993,24 +735,21 @@ export class OnlineRoomService {
     const now = Date.now()
 
     for (const [roomCode, room] of this.rooms.entries()) {
+      const removedDisconnectedPlayer = expireDisconnectedPlayers(room, now)
       const hasOnlinePlayer = [...room.players.values()].some((player) => player.online)
 
-      if (hasOnlinePlayer) {
-        continue
-      }
-
-      if (now - room.createdAt > ROOM_IDLE_TTL_MS) {
-        this.clearBotTimer(room)
+      if (
+        room.players.size === 0 ||
+        (!hasOnlinePlayer && now - room.lastActivityAt > ROOM_IDLE_TTL_MS)
+      ) {
+        this.botScheduler.clear(room)
         this.rooms.delete(roomCode)
         continue
       }
 
-      const hasRecentPlayer = [...room.players.values()]
-        .some(() => now - room.createdAt <= DISCONNECT_RETENTION_MS)
-
-      if (!hasRecentPlayer) {
-        this.clearBotTimer(room)
-        this.rooms.delete(roomCode)
+      if (removedDisconnectedPlayer) {
+        this.botScheduler.schedule(room)
+        this.broadcastRoomStatePerSeat(room)
       }
     }
   }

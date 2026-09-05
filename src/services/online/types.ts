@@ -7,7 +7,7 @@ import type {
 } from '@/rules-core/types'
 
 /** 联机协议版本。客户端与服务端不一致时要求玩家刷新页面。 */
-export const ONLINE_PROTOCOL_VERSION = '2026-08-29-lobby-v1'
+export const ONLINE_PROTOCOL_VERSION = '2026-09-05-room-v2'
 
 /** 房间内一个座位的联机登录信息，重连时使用 token 找回座位。 */
 export interface OnlinePlayer {
@@ -39,6 +39,22 @@ export interface OnlineRoomState {
   isPlaying: boolean
   /** 房主座位；创建者是座位 0，房主离开后自动迁移给剩余真人。 */
   hostSeat: SeatId
+  /** 房间状态递增版本；客户端用它忽略重连期间迟到的旧快照。 */
+  revision: number
+  /** 真人座位连接状态；机器人座位不出现在此列表。 */
+  players: OnlineRoomPlayerState[]
+}
+
+/** 房间内真人玩家的公开连接状态。 */
+export interface OnlineRoomPlayerState {
+  /** 服务端固定座位。 */
+  seat: SeatId
+  /** 玩家昵称。 */
+  name: string
+  /** 当前 WebSocket 是否在线。 */
+  online: boolean
+  /** 是否是当前房主。 */
+  isHost: boolean
 }
 
 /** 联机大厅里一张房间的公开摘要，不包含任何座位明细或令牌。 */
@@ -68,8 +84,8 @@ export interface OnlineHandVisibility {
   hand: []
 }
 
-/** 客户端发给服务端的消息。 */
-export type OnlineClientMessage =
+/** 客户端业务消息；OnlineClient 发送时会统一补充协议版本。 */
+export type OnlineClientPayload =
   | { type: 'create-room'; playerName: string }
   | { type: 'join-room'; roomCode: string; playerName: string }
   | { type: 'list-rooms' }
@@ -81,6 +97,12 @@ export type OnlineClientMessage =
   | { type: 'request-room'; playerToken?: string }
   | { type: 'request-state'; playerToken?: string }
   | { type: 'ping' }
+
+/** 客户端发给服务端的完整消息。 */
+export type OnlineClientMessage = OnlineClientPayload & {
+  /** 前后端协议版本不一致时服务端直接拒绝，避免滚动发布期间状态互相污染。 */
+  protocolVersion: string
+}
 
 /** 服务端发给客户端的消息。 */
 export type OnlineServerMessage =
@@ -106,22 +128,25 @@ export type OnlineServerMessage =
       state: MatchState
     }
   | { type: 'room-state'; room: OnlineRoomState; state: MatchState }
-  | { type: 'match-state'; state: MatchState }
+  | { type: 'match-state'; roomCode: string; revision: number; state: MatchState }
   | { type: 'start-round-options'; options: StartRoundOptions }
   | { type: 'pong' }
   | { type: 'room-list'; rooms: OnlineRoomSummary[] }
   | { type: 'player-disconnected'; seat: SeatId; name: string }
   | { type: 'host-changed'; seat: SeatId; name: string }
   | { type: 'player-reconnected'; seat: SeatId; name: string }
+  | { type: 'room-left' }
   | { type: 'error'; code: OnlineErrorCode; message: string }
 
 /** 第一版联机错误码，前端转成玩家能理解的中文提示。 */
 export type OnlineErrorCode =
   | 'bad-message'
+  | 'protocol-mismatch'
   | 'room-not-found'
   | 'room-full'
   | 'seat-token-invalid'
   | 'not-host'
+  | 'already-in-room'
   | 'match-started'
   | 'invalid-action'
   | 'server-error'

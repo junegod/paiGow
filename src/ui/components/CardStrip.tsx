@@ -358,6 +358,7 @@ export function CardStrip({
                 }
               }}
               style={{ '--card-index': index } as CSSProperties}
+              data-card-id={card.id}
               animate={{
                 y: isSelected && draggingCardId !== card.id ? -20 : 0,
                 zIndex: draggingCardId === card.id ? 30 : isSelected ? 3 : 1,
@@ -418,6 +419,7 @@ export function CardStrip({
               .filter(Boolean)
               .join(' ')}
             style={{ '--card-index': index } as CSSProperties}
+            data-card-id={card.id}
           >
             {renderCard(card, true, index)}
           </div>

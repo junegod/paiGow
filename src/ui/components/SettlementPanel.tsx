@@ -10,6 +10,8 @@ interface SettlementPanelProps {
   onInspectHistory: () => void
   /** 进入下一局，沿用当前座位配置；允许上层先异步落账。 */
   onNextRound: () => void | Promise<void>
+  /** 是否允许当前玩家开始下一局；联机时只有房主可以操作。 */
+  canStartNextRound?: boolean
   /** 返回首页并重置整场；允许上层先异步落账。 */
   onRestartMatch: () => void | Promise<void>
 }
@@ -71,6 +73,7 @@ export function SettlementPanel({
   seatConfigs,
   onInspectHistory,
   onNextRound,
+  canStartNextRound = true,
   onRestartMatch,
 }: SettlementPanelProps) {
   const settlement = getDisplaySettlement(round)
@@ -137,11 +140,13 @@ export function SettlementPanel({
         <button
           type="button"
           className="hero-button hero-button--primary"
+          disabled={!canStartNextRound}
+          title={canStartNextRound ? undefined : '等待房主开始下一局'}
           onClick={() => {
             void onNextRound()
           }}
         >
-          下一局
+          {canStartNextRound ? '下一局' : '等待房主'}
         </button>
       </div>
     </section>

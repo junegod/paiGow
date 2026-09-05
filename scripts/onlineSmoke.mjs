@@ -1,10 +1,11 @@
 import WebSocket from 'ws'
 
-const url = process.env.ONLINE_WS_URL ?? 'ws://127.0.0.1:8788'
+const url = process.env.ONLINE_WS_URL ?? 'ws://127.0.0.1:8787'
+const protocolVersion = '2026-09-05-room-v2'
 const socket = new WebSocket(url)
 
 socket.on('open', () => {
-  socket.send(JSON.stringify({ type: 'create-room', playerName: 'A' }))
+  socket.send(JSON.stringify({ type: 'create-room', playerName: 'A', protocolVersion }))
 })
 
 socket.on('message', (data) => {

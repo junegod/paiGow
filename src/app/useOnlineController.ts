@@ -6,12 +6,10 @@ import { jiAnDaSuoZiRuleSet } from '@/rules-variants/ji-an-da-suo-zi/ruleSet'
 import {
   clearOnlineSession,
   createMatchStateForViewer,
-  mapSeatFromViewer,
   OnlineClient,
   readOnlineSession,
   saveOnlineSession,
 } from '@/services/online/OnlineClient'
-import { mapSeatForViewer } from '@/services/online/viewerSeats'
 import type {
   OnlineClientStatus,
   OnlineSessionSnapshot,
@@ -122,8 +120,8 @@ function readRoomSnapshot(message: OnlineServerMessage): {
  * @returns 联机阶段状态和操作函数。
  */
 export function useOnlineController(fallbackPlayerName = '玩家') {
-  const latestServerStateRef = useRef<MatchState | null>(null)
-  const pendingOpeningRoundRef = useRef<RoundState | null>(null)
+  const latestRevisionRef = useRef(0)
+  const activeRoomCodeRef = useRef<string | null>(null)
   const [client] = useState(() => new OnlineClient(createWebSocketUrl()))
   const [mode, setMode] = useState<OnlineMode>('offline')
   const [roomList, setRoomList] = useState<OnlineRoomSummary[]>([])
@@ -154,13 +152,34 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
   const [openingCeremony, setOpeningCeremony] = useState<RoundState | null>(null)
 
   /**
+   * 接受同一房间内不小于当前版本的快照；切换房间时重新开始计数。
+   *
+   * @param roomCode 消息所属房间。
+   * @param revision 服务端状态版本。
+   * @returns 是否应继续应用该消息。
+   */
+  function acceptServerRevision(roomCode: string, revision: number): boolean {
+    if (activeRoomCodeRef.current !== roomCode) {
+      activeRoomCodeRef.current = roomCode
+      latestRevisionRef.current = revision
+      return true
+    }
+
+    if (revision < latestRevisionRef.current) {
+      return false
+    }
+
+    latestRevisionRef.current = revision
+    return true
+  }
+
+  /**
    * 将服务端状态转换成当前玩家视角。
    *
    * @param nextState 服务端状态。
    * @param viewerSeat 当前玩家座位。
    */
   const applyViewerState = useEffectEvent((nextState: MatchState, viewerSeat: SeatId) => {
-    latestServerStateRef.current = structuredClone(nextState)
     // 服务端状态推进后，界面上的旧选牌必然失效；同步清空避免残留引用崩溃。
     setSelectedCardIds([])
     setMatchState(createMatchStateForViewer(nextState, viewerSeat))
@@ -184,6 +203,10 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
     room: OnlineRoomState
     state: MatchState
   }) => {
+    if (!acceptServerRevision(snapshot.room.roomCode, snapshot.room.revision)) {
+      return
+    }
+
     setRoom(snapshot.room)
 
     if (!player) {
@@ -233,7 +256,7 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
     }
 
     if (message.type === 'match-state') {
-      if (player) {
+      if (player && acceptServerRevision(message.roomCode, message.revision)) {
         applyViewerState(message.state, player.seat)
       }
       return
@@ -257,13 +280,15 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
     if (message.type === 'error') {
       setError(message.message)
 
-      if (message.code === 'seat-token-invalid') {
+      if (message.code === 'seat-token-invalid' || message.code === 'protocol-mismatch') {
         clearOnlineSession()
         setSession(null)
         setPlayer(null)
         setRoom(null)
         setMatchState(null)
         setMode('offline')
+        activeRoomCodeRef.current = null
+        latestRevisionRef.current = 0
       }
     }
 
@@ -294,6 +319,18 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
       unsubscribeStatus()
     }
   }, [client])
+
+  /** 房间座位变化后从服务端快照同步机器人名称，真人座位不进入编辑列表。 */
+  useEffect(() => {
+    if (!room || room.isPlaying) {
+      return
+    }
+
+    const humanSeats = new Set(room.players.map((roomPlayer) => roomPlayer.seat))
+    setBotNames(room.seatConfigs
+      .filter((seatConfig) => !humanSeats.has(seatConfig.seat))
+      .map((seatConfig) => seatConfig.name))
+  }, [room])
 
   /**
    * 大厅页打开时每 3 秒刷新一次房间列表，离开页面或隐藏时停止。
@@ -331,6 +368,15 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
     }
   }, [client, player])
 
+  /** 组件卸载或离开页面时清理理牌动画计时器，避免卸载后继续写 React 状态。 */
+  useEffect(() => {
+    return () => {
+      if (organizeAnimationTimerRef.current !== null) {
+        window.clearTimeout(organizeAnimationTimerRef.current)
+      }
+    }
+  }, [])
+
   /**
    * 每个玩家在新一局开局时播放同一段仪式；断线重连不重复打断当前局。
    */
@@ -339,7 +385,6 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
 
     if (!round) {
       setIsOpeningCeremonyVisible(false)
-      pendingOpeningRoundRef.current = null
       return
     }
 
@@ -348,7 +393,6 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
     }
 
     lastSeenRoundNumberRef.current = round.roundNumber
-    pendingOpeningRoundRef.current = structuredClone(round)
     setSelectedCardIds([])
 
     // 仪式必须使用当前玩家的座位视角，否则动画里的庄家和抓牌方向会指向别人。
@@ -369,9 +413,7 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
     }
 
     // 只有轮到自己时才允许选牌，避免机器人代打后残留旧选牌。
-    const viewerSeat = currentRound.seats.find((seatState) => seatState.seat === player.seat)
-
-    if (currentRound.currentSeat !== viewerSeat?.seat || isOpeningCeremonyVisible) {
+    if (currentRound.currentSeat !== 0 || isOpeningCeremonyVisible) {
       return
     }
 
@@ -388,16 +430,13 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
    * @param nextCardIds 拖拽后的界面牌序。
    */
   const reorderCurrentHand = useCallback((nextCardIds: string[]) => {
-    const currentSeat = matchState?.currentRound?.currentSeat
-
-    if (currentSeat === null || currentSeat === undefined || !player) {
+    if (!matchState?.currentRound || !player) {
       return
     }
 
-    const serverSeat = mapSeatFromViewer(currentSeat, player.seat)
     setHandOrder((previousOrder) => ({
       ...previousOrder,
-      [serverSeat]: nextCardIds,
+      0: nextCardIds,
     }))
     setSelectedCardIds((previousCardIds) =>
       nextCardIds.filter((cardId) => previousCardIds.includes(cardId)),
@@ -414,8 +453,7 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
       return
     }
 
-    const serverSeat = player.seat
-    const seatState = currentRound.seats.find((seat) => seat.seat === serverSeat)
+    const seatState = currentRound.seats.find((seat) => seat.seat === 0)
 
     if (!seatState || seatState.hand.length <= 1) {
       return
@@ -424,7 +462,7 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
     const nextOrder = arrangeJiAnDaSuoZiHandIds(seatState.hand)
     setHandOrder((previousOrder) => ({
       ...previousOrder,
-      [serverSeat]: nextOrder,
+      0: nextOrder,
     }))
     setIsHandOrganizing(true)
 
@@ -527,7 +565,7 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
    * 主动离开联机房间。
    * 先通知服务端把座位交给机器人，再清掉本地会话和牌桌状态，确保能直接回到首页。
    */
-  function leaveRoom(): void {
+  function leaveRoom(targetMode: OnlineMode = 'offline'): void {
     if (player?.token) {
       client.leaveRoom(player.token)
     }
@@ -539,7 +577,11 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
     setRoom(null)
     setMatchState(null)
     setSelectedCardIds([])
-    setMode('offline')
+    setHandOrder({})
+    activeRoomCodeRef.current = null
+    latestRevisionRef.current = 0
+    lastSeenRoundNumberRef.current = 0
+    setMode(targetMode)
   }
 
   /**
@@ -565,26 +607,11 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
     }
 
     client.submitAction(player.token, {
-      seat: mapSeatFromViewer(currentSeat, player.seat),
+      seat: player.seat,
       intent: action.intent,
       selectedCardIds: action.selectedCardIds,
     })
   }, [client, matchState, player])
-
-  /**
-   * 当前玩家请求统一翻开背面弃牌。服务端只需要一个合法座位触发。
-   */
-  function finishRoundAndReveal(): void {
-    if (!player || latestServerStateRef.current?.currentRound?.phase !== 'awaiting-reveal') {
-      return
-    }
-
-    client.submitAction(player.token, {
-      seat: 0,
-      intent: 'respond-pass-hidden',
-      selectedCardIds: [],
-    })
-  }
 
   /**
    * 派生成现有牌桌 UI 能直接使用的控制器形态。
@@ -601,10 +628,10 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
      * 否则座位 1/2/3 的玩家会误用服务端座位号查找，导致手牌永远是空。
      */
     const humanSeatState = player && currentRound
-      ? currentRound.seats.find((seatState) => seatState.seat === mapSeatForViewer(player.seat, player.seat)) ?? null
+      ? currentRound.seats.find((seatState) => seatState.seat === 0) ?? null
       : null
     const humanHandCards = humanSeatState
-      ? orderHandBySavedIds(handOrder[humanSeatState.seat], humanSeatState.hand)
+      ? orderHandBySavedIds(handOrder[0], humanSeatState.hand)
       : []
     /*
      * 底部操作面板永远展示"自己视角"：
@@ -683,8 +710,9 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
     saveBotNames,
     startMatch,
     submitViewerAction,
-    finishRoundAndReveal,
-    leaveOnlineMode: leaveRoom,
+    leaveOnlineMode: () => leaveRoom('offline'),
+    leaveRoomToBrowser: () => leaveRoom('browser'),
+    isHost: Boolean(player && room && player.seat === room.hostSeat),
     rulesRevision: '2026-08-28-online-v1',
   }
 }
