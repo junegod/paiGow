@@ -530,7 +530,7 @@ describe('吉安打索子规则引擎', () => {
     expect(botAction.intent).not.toBe('roll-dice')
   })
 
-  it('机器人最后两墩赏会优先打孵赏争取翻倍赏钱', () => {
+  it('机器人最后两墩赏会优先打孵赏争取翻倍奖励分', () => {
     const round = markAfterOpeningLead(
       createRound({ 0: REWARD_DEFINITION_IDS }, 0),
     )
@@ -831,7 +831,7 @@ describe('吉安打索子规则引擎', () => {
     expect(eightActions.map((action) => action.intent)).toContain('respond-pass-hidden')
   })
 
-  it('掷骰定门后有对应门必须明出，没有对应门才允许卖屁股弃牌', () => {
+  it('掷骰定门后有对应门必须明出，没有对应门才允许无门弃牌', () => {
     const hasDoorRound = markAfterOpeningLead(
       createRound(
         { 0: ['long_ban', 'point_five', 'point_seven', 'point_eight', 'point_nine'] },
@@ -867,7 +867,7 @@ describe('吉安打索子规则引擎', () => {
     )
   })
 
-  it('掷到点子门但手里没有点子时，可以任选一张牌面朝下卖屁股', () => {
+  it('掷到点子门但手里没有点子时，可以任选一张牌面朝下无门弃牌', () => {
     const noPointRound = markAfterOpeningLead(
       createRound(
         { 0: ['long_tian', 'long_di', 'long_ren', 'yao_fu', 'yao_yao_wu'] },
@@ -903,7 +903,7 @@ describe('吉安打索子规则引擎', () => {
     expect(afterHidden.currentTrick?.forcedDoor).toBe('point')
   })
 
-  it('卖屁股开墩后，后手有定门单张可以明吃，后续更大同门单张可继续吃', () => {
+  it('无门弃牌开墩后，后手有定门单张可以明吃，后续更大同门单张可继续吃', () => {
     const round = markAfterOpeningLead(
       createRound(
         {
@@ -979,7 +979,7 @@ describe('吉安打索子规则引擎', () => {
     ])
   })
 
-  it('掷骰后无论明出还是卖屁股都只能出一张牌', () => {
+  it('掷骰后无论明出还是无门弃牌都只能出一张牌', () => {
     const noPointRound = markAfterOpeningLead(
       createRound(
         { 0: ['long_tian', 'long_di', 'long_ren', 'yao_fu', 'yao_yao_wu'] },
@@ -1052,7 +1052,7 @@ describe('吉安打索子规则引擎', () => {
         },
         new SeededRandom(1),
       ),
-    ).toThrow('掷骰定门后没有对应门类时，只能背面卖屁股 1 张。')
+    ).toThrow('掷骰定门后没有对应门类时，只能无门弃牌 1 张。')
   })
 
   it('第一局和后续局按规则掷骰决定先手', () => {
@@ -1114,7 +1114,7 @@ describe('吉安打索子规则引擎', () => {
     expect(sweepWithReward.seats[1].baseDelta).toBe(-8)
     expect(sweepWithReward.seats[1].rewardDelta).toBe(-2)
     expect(sweepWithReward.seats[1].totalDelta).toBe(-10)
-    expect(sweepWithReward.summary).toBe('满 8 墩结算，基础每家出 8 个，赏钱每家另出 2 个。')
+    expect(sweepWithReward.summary).toBe('满 8 墩结算，基础每家出 8 分，奖励分每家另出 2 分。')
 
     sweepRound.rewardOutcome.wasLastTwo = true
     const sweepWithLastTwoReward = calculateSettlement(sweepRound)
@@ -1125,11 +1125,11 @@ describe('吉安打索子规则引擎', () => {
     expect(sweepWithLastTwoReward.seats[1].rewardDelta).toBe(-8)
     expect(sweepWithLastTwoReward.seats[1].totalDelta).toBe(-16)
     expect(sweepWithLastTwoReward.summary).toBe(
-      '满 8 墩结算，基础每家出 8 个，孵赏钱每家另出 8 个。',
+      '满 8 墩结算，基础每家出 8 分，孵赏奖励分每家另出 8 分。',
     )
   })
 
-  it('未赢最后一墩但打到 5 墩时，基础仍然进 1 个', () => {
+  it('未赢最后一墩但打到 5 墩时，基础仍然进 1 分', () => {
     const settlement = calculateSettlement(createSettlementRound([5, 3, 0, 0], 1))
 
     expect(settlement.seats[0].baseDelta).toBe(1)
@@ -1139,7 +1139,7 @@ describe('吉安打索子规则引擎', () => {
     expect(settlement.seats[3].baseDelta).toBe(-4)
   })
 
-  it('未赢最后一墩但打到 7 墩时，基础仍然进 3 个', () => {
+  it('未赢最后一墩但打到 7 墩时，基础仍然进 3 分', () => {
     const settlement = calculateSettlement(createSettlementRound([7, 1, 0, 0], 1))
 
     expect(settlement.seats[0].baseDelta).toBe(3)
@@ -1149,7 +1149,7 @@ describe('吉安打索子规则引擎', () => {
     expect(settlement.seats[3].baseDelta).toBe(-4)
   })
 
-  it('普通活赏只向未满 3 墩的人收赏钱，3 墩及以上免出', () => {
+  it('普通活赏只向未满 3 墩的人收奖励分，3 墩及以上免出', () => {
     const round = createSettlementRound([5, 3, 0, 0], 1)
 
     round.rewardOutcome = {
@@ -1170,11 +1170,11 @@ describe('吉安打索子规则引擎', () => {
     expect(settlement.seats[2].rewardDelta).toBe(-2)
     expect(settlement.seats[3].rewardDelta).toBe(-2)
     expect(settlement.summary).toBe(
-      '基础分按 4 墩保本逐家进出，最后一回合赢家承接净额。中途赏未被吃，未满 3 墩的玩家每人另出 2 个赏钱。',
+      '基础分按 4 墩保本逐家进出，最后一回合赢家承接净额。中途赏未被吃，未满 3 墩的玩家每人另出 2 分（奖励分）。',
     )
   })
 
-  it('孵赏只向未满 3 墩的人收孵赏钱，并在结算文案里使用传统叫法', () => {
+  it('孵赏只向未满 3 墩的人收孵赏奖励分，并在结算文案里使用传统叫法', () => {
     const round = createSettlementRound([2, 2, 3, 1], 0)
 
     round.rewardOutcome = {
@@ -1192,14 +1192,14 @@ describe('吉安打索子规则引擎', () => {
     expect(settlement.seats[1].rewardDelta).toBe(-4)
     expect(settlement.seats[2].rewardDelta).toBe(0)
     expect(settlement.seats[3].rewardDelta).toBe(-4)
-    expect(settlement.seats[0].summary).toContain('孵赏钱收 8 个')
-    expect(settlement.seats[1].summary).toContain('孵赏钱出 4 个')
+    expect(settlement.seats[0].summary).toContain('孵赏奖励分收 8 分')
+    expect(settlement.seats[1].summary).toContain('孵赏奖励分出 4 分')
     expect(settlement.summary).toBe(
-      '基础分按 4 墩保本逐家进出，最后一回合赢家承接净额。孵赏未被吃，未满 3 墩的玩家每人另出 4 个孵赏钱。',
+      '基础分按 4 墩保本逐家进出，最后一回合赢家承接净额。孵赏未被吃，未满 3 墩的玩家每人另出 4 分（孵赏奖励分）。',
     )
   })
 
-  it('死赏不能被吃但不产生额外赏钱', () => {
+  it('死赏不能被吃但不产生额外奖励分', () => {
     const sweepRound = createSettlementRound([8, 0, 0, 0], 0)
 
     sweepRound.rewardOutcome = {
@@ -1215,7 +1215,7 @@ describe('吉安打索子规则引擎', () => {
 
     expect(settlement.seats[0].totalDelta).toBe(24)
     expect(settlement.seats[1].totalDelta).toBe(-8)
-    expect(settlement.summary).toBe('满 8 墩结算，每家出 8 个。')
+    expect(settlement.summary).toBe('满 8 墩结算，每家出 8 分。')
   })
 
   it('背面弃牌只在整局结束后统一翻开，并同步到赢墩堆', () => {

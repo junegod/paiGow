@@ -52,11 +52,11 @@ export interface ScoreLedger {
   seat: SeatId
   /** 本局总积分变化，正数为进分，负数为出分。 */
   delta: number
-  /** 流水类型：对局积分、系统充值或中途离局扣分。 */
+  /** 流水类型：对局积分、系统免费补分或中途离局扣分。 */
   kind: 'round' | 'recharge' | 'leave-penalty'
   /** 基础分变化。 */
   baseDelta: number
-  /** 赏钱变化。 */
+  /** 奖励分变化。 */
   rewardDelta: number
   /** 当前用户本局赢到的墩数。 */
   wonPierCount: number
@@ -108,7 +108,7 @@ export interface MatchHistorySeatResult {
   wonPierCount: number
   /** 基础分变化。 */
   baseDelta: number
-  /** 赏钱变化。 */
+  /** 奖励分变化。 */
   rewardDelta: number
   /** 总积分变化。 */
   totalDelta: number

@@ -123,7 +123,7 @@ export function LobbyPanel({
     .filter((card): card is CardInstance => Boolean(card))
 
   /**
-   * 首页选牌最多 8 张；再次点击已选牌会取消，方便快速重组选牌测试赏钱。
+   * 首页选牌最多 8 张；再次点击已选牌会取消，方便快速重组选牌测试奖励分。
    */
   function toggleOpeningCard(card: CardInstance): void {
     setSelectedOpeningCardIds((previousCardIds) => {
@@ -224,7 +224,7 @@ export function LobbyPanel({
 
           <section className="home-lobby__stage">
             <div className="home-lobby__brand">
-              <p>江西吉安新居村非物质文化遗产</p>
+              <p>江西吉安新居村地方传统玩法</p>
               <h1>打索子</h1>
             </div>
 
@@ -345,7 +345,7 @@ export function LobbyPanel({
             <p className="home-lobby__error" role="alert">{onlineError ?? localUserPanel?.errorMessage}</p>
           ) : null}
           <p className="home-lobby__disclaimer">
-            本游戏为村里非物质文化遗产传统棋盘游戏，仅村内部娱乐，非赌博工具。
+            地方传统骨牌游戏；积分仅记录游戏表现，不可购买、转让或兑换。
           </p>
         </div>
       ) : (
@@ -353,7 +353,7 @@ export function LobbyPanel({
           <div className="lobby-panel__hero">
             <div className="lobby-panel__hero-main">
               <div>
-                <p className="lobby-panel__eyebrow">江西吉安新居村非物质文化遗产</p>
+                <p className="lobby-panel__eyebrow">江西吉安新居村地方传统玩法</p>
                 <h1>打索子</h1>
               </div>
               {canPickOpeningHand ? (

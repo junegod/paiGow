@@ -24,6 +24,9 @@ describe('联机恢复快照门禁', () => {
       hostSeat: 0, revision: 1, players: [{ ...player, online: true, isHost: true }],
     }
     const { result } = renderHook(() => useOnlineController('测试玩家'))
+    // 本测试从玩家明确同意的联机入口开始，首页本身不再自动建连。
+    await act(async () => { result.current.enterBrowser() })
+    await act(async () => { result.current.consent.accept() })
     const first = FakeWebSocket.instances[0]
     await act(async () => {
       first.open()

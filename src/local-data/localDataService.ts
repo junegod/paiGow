@@ -235,7 +235,12 @@ async function ensureLocalDataReady(database: IDBDatabase): Promise<void> {
 }
 
 /**
- * 创建系统充值流水。充值不算对局局数，只进入用户余额。
+ * 创建系统免费补分流水；积分无货币价值，不计入对局局数。
+ * 保留 recharge 类型和旧 ID 前缀，避免升级后旧流水无法识别。
+ * @param userId 本机玩家标识。
+ * @param summary 免费补分的说明。
+ * @param amount 免费补充的练习积分。
+ * @returns 与旧版存储兼容的积分流水。
  */
 function createRechargeLedger(
   userId: string,
@@ -265,6 +270,9 @@ function createRechargeLedger(
 
 /**
  * 创建固定 ID 的钱包迁移流水。严格模式重复初始化时，put 会覆盖同一条记录，不会重复叠加。
+ * @param userId 本机玩家标识。
+ * @param amount 校准所需的积分变化。
+ * @returns 使用固定标识的幂等迁移流水。
  */
 function createWalletMigrationLedger(userId: string, amount: number): ScoreLedger {
   const createdAt = nowIsoString()
@@ -283,7 +291,7 @@ function createWalletMigrationLedger(userId: string, amount: number): ScoreLedge
     rewardDelta: 0,
     wonPierCount: 0,
     isSweep: false,
-    summary: '钱包规则升级，校准初始积分',
+    summary: '积分规则升级，校准初始积分',
     createdAt,
   }
 }
@@ -327,6 +335,9 @@ function calculateUserScore(ledgers: ScoreLedger[], userId: string): number {
 
 /**
  * 首次进入或扣到 0 分后，系统给用户补 100 分，避免单机版无法继续玩。
+ * @param database 已打开的本地数据库。
+ * @param users 需要检查积分的本机玩家。
+ * @returns 所有必要的免费补分写入完成后返回。
  */
 async function ensureUsersHavePlayableScore(database: IDBDatabase, users: UserProfile[]): Promise<void> {
   const ledgers = await getAllLocalItems(database, LOCAL_DATA_STORES.scoreLedger)
@@ -334,13 +345,17 @@ async function ensureUsersHavePlayableScore(database: IDBDatabase, users: UserPr
   await Promise.all(
     users
       .filter((user) => calculateUserScore(ledgers, user.id) <= 0)
-      .map((user) => putLocalItem(database, LOCAL_DATA_STORES.scoreLedger, createRechargeLedger(user.id, '余额不足，系统自动充值'))),
+      .map((user) => putLocalItem(database, LOCAL_DATA_STORES.scoreLedger, createRechargeLedger(user.id, '积分不足，系统免费补充练习积分'))),
   )
 }
 
 /**
  * 旧版本本地积分没有“初始 100 钱包”概念。首次升级时统一校准到 100，
- * 之后真实对局的输赢不再反复校准，只有余额用完才自动充值。
+ * 之后真实对局的积分不再反复校准，只有积分用完才免费补分。
+ * @param database 已打开的本地数据库。
+ * @param users 待校准的本机玩家。
+ * @param settings 旧版设置，缺失时执行首次迁移。
+ * @returns 积分校准和版本记录完成后返回。
  */
 async function migrateWalletToOpeningBalance(
   database: IDBDatabase,

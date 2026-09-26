@@ -131,7 +131,10 @@ function scoreLeadAction(
 
 /**
  * 掷骰后的补牌评分：有定门牌时尽量用低损耗但不太弱的同门牌；
- * 没有定门牌卖屁股时，直接甩掉未来价值最低的一张。
+ * 没有定门牌无门弃牌时，直接甩掉未来价值最低的一张。
+ * @param context 机器人公开信息决策上下文。
+ * @param action 当前骰子定门后的合法候选动作。
+ * @returns 考虑牌力和手牌结构损耗的评分。
  */
 function scoreDiceResolutionAction(
   context: BotDecisionContext,

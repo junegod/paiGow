@@ -3,6 +3,7 @@ import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } fro
 import { OnlineClient, type OnlineClientStatus } from '@/services/online/OnlineClient'
 import { DEFAULT_BOT_NAMES, orderHandBySavedIds, createWebSocketUrl, readRoomSnapshot, type OnlineMode } from '@/app/onlineControllerSupport'
 import { createMatchStateForViewer } from '@/services/online/viewerState'
+import { hasOnlineConsent, useOnlineConsent } from '@/app/useOnlineConsent'
 import { useOnlineReadiness } from '@/app/useOnlineReadiness'
 
 import { arrangeJiAnDaSuoZiHandIds } from '@/rules-variants/ji-an-da-suo-zi/handArrangement'
@@ -40,6 +41,7 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
   const resumingTokenRef = useRef<string | null>(null)
   const latestRevisionRef = useRef(0)
   const activeRoomCodeRef = useRef<string | null>(null)
+  const consent = useOnlineConsent()
   const [client] = useState(() => new OnlineClient(createWebSocketUrl()))
   const readiness = useOnlineReadiness(client)
   const resetReadiness = readiness.reset
@@ -242,7 +244,8 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
   useEffect(() => {
     const unsubscribeMessage = client.onMessage(handleServerMessage)
     const unsubscribeStatus = client.onStatus(handleConnectionStatus)
-    client.connect()
+    // 只有已确认说明且确有待恢复座位时才自动建连；首次首页和单机不接触服务器。
+    if (hasOnlineConsent() && readOnlineSession()) client.connect()
 
     return () => {
       unsubscribeMessage()
@@ -422,9 +425,12 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
    * 进入联机大厅页面。首次进入时立即拉取一次房间列表，之后由轮询定时刷新。
    */
   function enterBrowser(): void {
-    setMode('browser')
-    setIsRoomListLoading(true)
-    client.requestRoomList()
+    consent.request(() => {
+      setMode('browser')
+      setIsRoomListLoading(true)
+      client.connect()
+      client.requestRoomList()
+    })
   }
 
   /**
@@ -432,6 +438,7 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
    */
   function exitBrowser(): void {
     setMode('offline')
+    client.disconnect()
     setRoomList([])
     setIsRoomListLoading(false)
   }
@@ -442,8 +449,11 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
    * @param playerName 创建者名字。
    */
   function createRoomFromBrowser(playerName: string): void {
-    setError(null)
-    client.createRoom(playerName.trim() || fallbackPlayerName)
+    consent.request(() => {
+      setError(null)
+      client.connect()
+      client.createRoom(playerName.trim() || fallbackPlayerName)
+    })
   }
 
   /**
@@ -453,8 +463,11 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
    * @param playerName 加入者名字。
    */
   function joinRoomFromBrowser(roomCode: string, playerName: string): void {
-    setError(null)
-    client.joinRoom(roomCode, playerName.trim() || fallbackPlayerName)
+    consent.request(() => {
+      setError(null)
+      client.connect()
+      client.joinRoom(roomCode, playerName.trim() || fallbackPlayerName)
+    })
   }
 
   /**
@@ -463,8 +476,11 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
    * @param playerName 创建者名字。
    */
   function createRoom(playerName: string): void {
-    setError(null)
-    client.createRoom(playerName.trim() || fallbackPlayerName)
+    consent.request(() => {
+      setError(null)
+      client.connect()
+      client.createRoom(playerName.trim() || fallbackPlayerName)
+    })
   }
 
   /**
@@ -474,8 +490,11 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
    * @param playerName 加入者名字。
    */
   function joinRoom(roomCode: string, playerName: string): void {
-    setError(null)
-    client.joinRoom(roomCode, playerName.trim() || fallbackPlayerName)
+    consent.request(() => {
+      setError(null)
+      client.connect()
+      client.joinRoom(roomCode, playerName.trim() || fallbackPlayerName)
+    })
   }
 
   /**
@@ -511,7 +530,8 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
 
   /**
    * 主动离开联机房间。
-   * 先通知服务端把座位交给机器人，再清掉本地会话和牌桌状态，确保能直接回到首页。
+   * 先通知服务端把座位交给机器人，再清掉本地会话和牌桌状态；回首页时停止网络连接。
+   * @param targetMode 返回单机首页或联机大厅。
    */
   function leaveRoom(targetMode: OnlineMode = 'offline'): void {
     resumingTokenRef.current = null
@@ -532,6 +552,8 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
     latestRevisionRef.current = 0
     lastSeenRoundNumberRef.current = 0
     setMode(targetMode)
+    // 明确回到单机后停止心跳；回联机大厅时保留连接供房间列表使用。
+    if (targetMode === 'offline') client.disconnect()
   }
 
   /**
@@ -639,6 +661,7 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
   }, [handOrder, openingCeremony, isHandOrganizing, isOpeningCeremonyVisible, matchState, player, selectedCardIds, startMatch, submitViewerAction, toggleCardSelection, reorderCurrentHand, organizeHumanHand])
 
   return {
+    consent,
     mode,
     roomList,
     isRoomListLoading,

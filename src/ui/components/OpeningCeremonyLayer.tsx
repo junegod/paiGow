@@ -353,11 +353,11 @@ export function OpeningCeremonyLayer({
           animate={{ opacity: 1, scale: 1, y: 0 }}
           transition={{ duration: 0.42 }}
         >
-          <span className="opening-ceremony__dice-title">掷骰定庄</span>
+          <span className="opening-ceremony__dice-title">掷骰定先手</span>
           <div className="opening-ceremony__bowl opening-ceremony__bowl--3d" aria-hidden="true">
             <DiceDisplay roll={round.ceremony.roll} animate={phase === 'dice'} bowl />
           </div>
-          <strong>庄：{dealerName}</strong>
+          <strong>先手：{dealerName}</strong>
         </motion.div>
       ) : null}
 
@@ -435,7 +435,7 @@ export function OpeningCeremonyLayer({
               : phase === 'dice'
                 ? '骰子落定'
                 : phase === 'deal'
-                  ? '从庄家开始抓牌'
+                  ? '从先手开始抓牌'
                   : '抓牌完成'}
         </strong>
         <span>{phase === 'deal' ? '每次抓 2 张，每家抓 4 墩' : '模拟线下开局流程'}</span>

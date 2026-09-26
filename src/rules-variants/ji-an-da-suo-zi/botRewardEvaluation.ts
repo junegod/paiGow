@@ -5,8 +5,8 @@ import type { ActionShape } from '@/rules-variants/ji-an-da-suo-zi/botStrategyAn
 import { LIVE_REWARD_EATERS } from '@/rules-variants/ji-an-da-suo-zi/patternCatalog'
 
 /**
- * 活赏未被吃时，每个需要出赏钱的对手要出的金额。
- * 最后两墩出的赏叫孵赏，钱更贵，所以机器人必须把它当成高价值机会。
+ * 活赏未被吃时，每个需要扣奖励分的对手应扣的积分。
+ * 最后两墩出的赏叫孵赏，奖励分更高，所以机器人必须把它当成高价值机会。
  */
 const LIVE_REWARD_VALUE_PER_OPPONENT = {
   normal: 2,
@@ -77,7 +77,10 @@ function estimateEligibleEaterSeatFactor(context: BotDecisionContext): number {
 
 /**
  * 判断这次赏是不是孵赏。最后两墩活赏是明显的收益点：
- * 不仅孵赏钱翻倍，还经常关系到最后一墩控制权。
+ * 不仅孵赏奖励分翻倍，还经常关系到最后一墩控制权。
+ * @param context 机器人仅含可见信息的决策上下文。
+ * @param shape 候选动作的牌型特征。
+ * @returns 是否为最后两张的赏。
  */
 export function isLastTwoRewardAction(
   context: BotDecisionContext,
@@ -139,8 +142,11 @@ function estimateRewardPierPressureScore(
 }
 
 /**
- * 活赏收益评分。普通活赏按每家 2 个赏钱建模，孵赏按每家 4 个孵赏钱建模；
- * 最后一手额外加权，确保机器人知道孵赏比普通两墩更值钱。
+ * 活赏收益评分。普通活赏按每家 2 个奖励分建模，孵赏按每家 4 个孵赏奖励分建模；
+ * 最后一手额外加权，确保机器人知道孵赏比普通两墩收益更高。
+ * @param context 机器人仅含可见信息的决策上下文。
+ * @param shape 候选动作的牌型特征。
+ * @returns 活赏的策略评分，其他牌型返回零。
  */
 export function estimateLiveRewardLeadScore(
   context: BotDecisionContext,
@@ -163,8 +169,11 @@ export function estimateLiveRewardLeadScore(
 }
 
 /**
- * 死赏只保留“稳拿不被吃”的战术价值，但明确扣掉没有赏钱的机会成本。
- * 特别是最后两墩牌，死赏会浪费孵赏钱，所以必须被强烈压低。
+ * 死赏只保留“稳拿不被吃”的战术价值，但明确扣掉没有奖励分的机会成本。
+ * 特别是最后两墩牌，死赏会浪费孵赏奖励分，所以必须被强烈压低。
+ * @param context 机器人仅含可见信息的决策上下文。
+ * @param shape 候选动作的牌型特征。
+ * @returns 死赏的策略评分，其他牌型返回零。
  */
 export function estimateDeadRewardLeadScore(
   context: BotDecisionContext,

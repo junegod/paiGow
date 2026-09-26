@@ -3,6 +3,7 @@ import {
   useState,
 } from 'react'
 
+import { PrivacyPanel } from '@/ui/components/PrivacyPanel'
 import type { AudioPreferences } from '@/local-data/types'
 import {
   playGameSound,
@@ -10,7 +11,12 @@ import {
   setGameAudioPreferences,
 } from '@/ui/audio/gameAudio'
 
+/** 声音、开局动画与隐私说明共用的本机设置入口。 */
 export interface SettingsPanelProps {
+  /** 当前是否同意联机，用于跨页面切换后仍准确显示撤回状态。 */
+  onlineConsentGranted: boolean
+  /** 撤回联机许可；调用方负责先安全离开当前房间。 */
+  onRevokeOnlineConsent: () => void
   /** 当前设备已经保存的声音设置。 */
   audioPreferences: AudioPreferences
   /** 设置保存期间用于禁止重复操作。 */
@@ -36,17 +42,21 @@ function toPercentage(volume: number): number {
 }
 
 /**
- * 应用设置弹窗。当前只放与实际游戏体验直接相关的音效和喊声，
- * 后续若增加震动、动画速度等设备级选项，可继续沿用同一设置面板。
+ * 应用设置弹窗，集中保存音效和动画偏好，并提供隐私说明与撤回联机同意入口。
+ * @param props 当前设置、保存回调与退出联机后的撤回回调。
+ * @returns 可滚动的设置对话框。
  */
 export function SettingsPanel({
   audioPreferences,
+  onRevokeOnlineConsent,
+  onlineConsentGranted,
   disabled = false,
   skipOpeningCeremony,
   onClose,
   onAudioPreferencesChange,
   onSkipOpeningCeremonyChange,
 }: SettingsPanelProps) {
+  const [privacyOpen, setPrivacyOpen] = useState(false)
   const [effectEnabled, setEffectEnabled] = useState(audioPreferences.soundEffectsEnabled)
   const [voiceEnabled, setVoiceEnabled] = useState(audioPreferences.voiceCallsEnabled)
   const [effectVolume, setEffectVolume] = useState(toPercentage(audioPreferences.soundEffectsVolume))
@@ -243,6 +253,12 @@ export function SettingsPanel({
           </div>
         </div>
 
+        <div className="settings-panel__privacy-actions">
+          <button type="button" className="settings-panel__preview" onClick={() => setPrivacyOpen(true)}>隐私与积分说明</button>
+          <button type="button" className="settings-panel__preview" disabled={!onlineConsentGranted} onClick={onRevokeOnlineConsent}>撤回联机同意（退出房间）</button>
+          {!onlineConsentGranted ? <p role="status">当前未同意联机，可继续使用单机。</p> : null}
+        </div>
+        {privacyOpen ? <PrivacyPanel onClose={() => setPrivacyOpen(false)} /> : null}
         <p className="settings-panel__note">四个座位使用不同声线，所有声音均保存在本机。</p>
       </section>
     </div>

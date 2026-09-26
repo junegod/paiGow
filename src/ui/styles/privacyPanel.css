@@ -1,0 +1,26 @@
+/* 原生 dialog 进入顶层，不受设置弹窗和牌桌动画的层级影响。 */
+.privacy-panel {
+  width: min(94vw, 600px);
+  height: min(86dvh, 760px);
+  max-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 24px);
+  margin: auto;
+  padding: 18px;
+  border: 1px solid #c7a658;
+  border-radius: 18px;
+  color: #fff8db;
+  background: #073526;
+}
+
+.privacy-panel[open] { display: flex; flex-direction: column; gap: 12px; }
+.privacy-panel::backdrop { background: rgb(0 12 8 / 80%); }
+.privacy-panel header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.privacy-panel h2 { margin: 0; font-size: 1.1rem; }
+.privacy-panel p { margin: 0; font-size: 0.85rem; line-height: 1.6; }
+.privacy-panel iframe { width: 100%; min-height: 100px; flex: 1; border: 0; border-radius: 8px; background: #faf7ef; }
+.privacy-panel button { min-height: 44px; flex-shrink: 0; }
+.privacy-panel header button { padding: 8px 12px; border: 1px solid #c7a658; border-radius: 10px; color: inherit; background: transparent; }
+
+/* 小屏设备的设置项增加后允许内部滚动，关闭和隐私入口均可到达。 */
+.settings-panel__card { max-height: 90dvh; overflow-y: auto; }
+.settings-panel__privacy-actions { display: grid; gap: 6px; margin-top: 12px; }
+.settings-panel__privacy-actions button { min-height: 44px; }

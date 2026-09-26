@@ -16,8 +16,10 @@ export function getBaseDeltaFromWonPiers(wonPierCount: number): number {
 }
 
 /**
- * 判断当前赏是否真的产生赏钱。死赏只是不允许被吃的出牌方式，
- * 不产生赏钱；活赏被吃后赏钱也失效。
+ * 判断当前赏是否真的产生奖励分。死赏只是不允许被吃的出牌方式，
+ * 不产生奖励分；活赏被吃后奖励分也失效。
+ * @param rewardOutcome 本局赏的最终状态，可为空。
+ * @returns 是否存在未被吃的活赏奖励。
  */
 function hasActiveRewardMoney(rewardOutcome?: RewardOutcome): rewardOutcome is RewardOutcome {
   if (!rewardOutcome || rewardOutcome.mode !== 'live' || rewardOutcome.wasEaten) {
@@ -28,22 +30,27 @@ function hasActiveRewardMoney(rewardOutcome?: RewardOutcome): rewardOutcome is R
 }
 
 /**
- * 普通活赏每家出 2 个；最后两墩出的赏传统叫“孵赏”，每家出 4 个。
+ * 普通活赏每家出 2 分；最后两墩出的赏传统叫“孵赏”，每家出 4 分。
  */
 function getNormalRewardValue(rewardOutcome: RewardOutcome): number {
   return rewardOutcome.wasLastTwo ? 4 : 2
 }
 
 /**
- * 结算文案里区分普通赏钱和孵赏钱，让玩家一眼知道这笔钱来自最后两墩赏。
+ * 结算文案里区分普通奖励分和孵赏奖励分，让玩家一眼知道这部分积分来自最后两墩赏。
+ * @param rewardOutcome 有效活赏状态。
+ * @returns 普通或孵赏奖励分名称，均不代表货币。
  */
 function getRewardMoneyLabel(rewardOutcome: RewardOutcome): string {
-  return rewardOutcome.wasLastTwo ? '孵赏钱' : '赏钱'
+  return rewardOutcome.wasLastTwo ? '孵赏奖励分' : '奖励分'
 }
 
 /**
- * 非满 8 墩时，打到 3 墩及以上的人不用出赏钱。
- * 这里只筛出真正需要出赏钱的玩家，方便扣分和汇总文案保持一致。
+ * 非满 8 墩时，打到 3 墩及以上的人不用出奖励分。
+ * 这里只筛出真正需要出奖励分的玩家，方便扣分和汇总文案保持一致。
+ * @param round 当前牌局。
+ * @param rewardOutcome 有效活赏状态。
+ * @returns 未满三墩且不是赏持有者的座位。
  */
 function getNormalRewardPayers(round: RoundState, rewardOutcome: RewardOutcome) {
   return round.seats.filter(
@@ -54,8 +61,10 @@ function getNormalRewardPayers(round: RoundState, rewardOutcome: RewardOutcome) 
 }
 
 /**
- * 根据活赏结果计算额外奖惩。普通局里只有未满 3 墩的玩家出赏钱；
+ * 根据活赏结果计算额外奖惩。普通局里只有未满 3 墩的玩家出奖励分；
  * 3 墩及以上免出，这条是系统结算最容易漏的本地口径。
+ * @param round 当前牌局。
+ * @param seatDeltas 待原地更新的各座位积分差额。
  */
 function applyRewardDelta(
   round: RoundState,
@@ -86,8 +95,10 @@ function applyRewardDelta(
 }
 
 /**
- * 满 8 墩时基础账固定是每家出 8 个；如果同局带活赏，
- * 赏钱需要另拆出来展示，避免把“8 墩钱”和“赏钱”混成一个数字。
+ * 满 8 墩时基础账固定是每家出 8 分；如果同局带活赏，
+ * 奖励分需要另拆出来展示，避免把“8 墩基础分”和“奖励分”混成一个数字。
+ * @param rewardOutcome 本局赏的最终状态，可为空。
+ * @returns 满八墩时每名对手的奖励分差额；无有效活赏时为零。
  */
 function getSweepRewardValue(rewardOutcome?: RewardOutcome): number {
   if (!hasActiveRewardMoney(rewardOutcome)) {
@@ -98,14 +109,16 @@ function getSweepRewardValue(rewardOutcome?: RewardOutcome): number {
 }
 
 /**
- * 生成非满 8 墩的赏钱总结。这里必须写出“未满 3 墩才出”，
- * 否则玩家会误以为所有人都要出赏钱。
+ * 生成非满 8 墩的奖励分总结。这里必须写出“未满 3 墩才出”，
+ * 否则玩家会误以为所有人都要出奖励分。
+ * @param round 当前牌局。
+ * @returns 明确奖励条件和豁免座位的积分说明。
  */
 function createNormalRewardSummary(round: RoundState): string {
   const rewardOutcome = round.rewardOutcome
 
   if (!hasActiveRewardMoney(rewardOutcome)) {
-    return '本局无额外赏钱。'
+    return '本局无额外奖励分。'
   }
 
   const rewardValue = getNormalRewardValue(rewardOutcome)
@@ -117,11 +130,14 @@ function createNormalRewardSummary(round: RoundState): string {
     return `${rewardName}未被吃，但其他玩家都已打到 3 墩及以上，不出${rewardLabel}。`
   }
 
-  return `${rewardName}未被吃，未满 3 墩的玩家每人另出 ${rewardValue} 个${rewardLabel}。`
+  return `${rewardName}未被吃，未满 3 墩的玩家每人另出 ${rewardValue} 分（${rewardLabel}）。`
 }
 
 /**
  * 计算一局完整结算，默认正数表示赢分、负数表示出分。
+ * @param round 已决出最后一墩赢家的牌局。
+ * @returns 各座位基础分、奖励分和合计变化；总和保持为零。
+ * @throws 缺少最后赢家或座位记录时拒绝结算。
  */
 export function calculateSettlement(round: RoundState): RoundSettlement {
   if (round.lastTrickWinner === undefined) {
@@ -137,7 +153,7 @@ export function calculateSettlement(round: RoundState): RoundSettlement {
     const rewardLabel =
       round.rewardOutcome && hasActiveRewardMoney(round.rewardOutcome)
         ? getRewardMoneyLabel(round.rewardOutcome)
-        : '赏钱'
+        : '奖励分'
 
     const seats = round.seats.map<SeatSettlement>((seat) => {
       if (seat.seat === sweepWinner.seat) {
@@ -152,8 +168,8 @@ export function calculateSettlement(round: RoundState): RoundSettlement {
           totalDelta: baseDelta + rewardDelta,
           summary:
             rewardDelta > 0
-              ? `满 8 墩基础收 ${baseDelta} 个，${rewardLabel}收 ${rewardDelta} 个`
-              : `满 8 墩，收 ${baseDelta} 个`,
+              ? `满 8 墩基础收 ${baseDelta} 分，${rewardLabel}收 ${rewardDelta} 分`
+              : `满 8 墩，收 ${baseDelta} 分`,
         }
       }
 
@@ -165,14 +181,14 @@ export function calculateSettlement(round: RoundState): RoundSettlement {
         totalDelta: -totalValue,
         summary:
           rewardValue > 0
-            ? `对方满 8 墩基础出 ${baseValue} 个，${rewardLabel}出 ${rewardValue} 个`
-            : `对方满 8 墩，出 ${baseValue} 个`,
+            ? `对方满 8 墩基础出 ${baseValue} 分，${rewardLabel}出 ${rewardValue} 分`
+            : `对方满 8 墩，出 ${baseValue} 分`,
       }
     })
     const rewardSummary =
       rewardValue > 0
-        ? `基础每家出 ${baseValue} 个，${rewardLabel}每家另出 ${rewardValue} 个。`
-        : `每家出 ${baseValue} 个。`
+        ? `基础每家出 ${baseValue} 分，${rewardLabel}每家另出 ${rewardValue} 分。`
+        : `每家出 ${baseValue} 分。`
 
     return {
       collector: sweepWinner.seat,
@@ -231,19 +247,19 @@ export function calculateSettlement(round: RoundState): RoundSettlement {
     const rewardLabel =
       round.rewardOutcome && hasActiveRewardMoney(round.rewardOutcome)
         ? getRewardMoneyLabel(round.rewardOutcome)
-        : '赏钱'
+        : '奖励分'
     const rewardText =
       delta.rewardDelta === 0
         ? ''
         : delta.rewardDelta > 0
-          ? `，${rewardLabel}收 ${delta.rewardDelta} 个`
-          : `，${rewardLabel}出 ${Math.abs(delta.rewardDelta)} 个`
+          ? `，${rewardLabel}收 ${delta.rewardDelta} 分`
+          : `，${rewardLabel}出 ${Math.abs(delta.rewardDelta)} 分`
     const baseText =
       delta.baseDelta === 0
         ? '基础保本'
         : delta.baseDelta > 0
-          ? `基础进 ${delta.baseDelta} 个`
-          : `基础出 ${Math.abs(delta.baseDelta)} 个`
+          ? `基础进 ${delta.baseDelta} 分`
+          : `基础出 ${Math.abs(delta.baseDelta)} 分`
 
     return {
       seat: seat.seat,

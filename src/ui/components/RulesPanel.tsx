@@ -49,14 +49,14 @@ interface SettlementFormulaRow {
 }
 
 const SCORE_ROWS: ScoreRow[] = [
-  { pierCount: '0 墩', result: '出 4 个' },
-  { pierCount: '1 墩', result: '出 3 个' },
-  { pierCount: '2 墩', result: '出 2 个' },
-  { pierCount: '3 墩', result: '出 1 个' },
+  { pierCount: '0 墩', result: '出 4 分' },
+  { pierCount: '1 墩', result: '出 3 分' },
+  { pierCount: '2 墩', result: '出 2 分' },
+  { pierCount: '3 墩', result: '出 1 分' },
   { pierCount: '4 墩', result: '保本' },
-  { pierCount: '5 墩', result: '进 1 个' },
-  { pierCount: '6 墩', result: '进 2 个' },
-  { pierCount: '7 墩', result: '进 3 个' },
+  { pierCount: '5 墩', result: '进 1 分' },
+  { pierCount: '6 墩', result: '进 2 分' },
+  { pierCount: '7 墩', result: '进 3 分' },
 ]
 
 /**
@@ -182,7 +182,7 @@ export function RulesPanel({ onBack, backLabel = '返回首页' }: RulesPanelPro
     <div className="rules-panel">
       <header className="rules-panel__head">
         <div>
-          <p>江西吉安新居村非物质文化遗产</p>
+          <p>江西吉安新居村地方传统玩法</p>
           <h2>打索子规则</h2>
         </div>
         <button type="button" onClick={onBack}>{backLabel}</button>
@@ -335,10 +335,10 @@ export function RulesPanel({ onBack, backLabel = '返回首页' }: RulesPanelPro
         </section>
 
         <section className="rules-section">
-          <h3>5. 掷骰子和卖屁股</h3>
+          <h3>5. 掷骰子和无门弃牌</h3>
           <p>
             轮到自己领出时，如果不想打当前可明打的牌，可以掷两颗骰子。骰子定到哪一门，
-            有那一门就必须明出 1 张；没有那一门，才能背面弃 1 张，这才叫卖屁股。
+            有那一门就必须明出 1 张；没有那一门，才能背面弃 1 张，称为无门弃牌。
           </p>
           <div className="rules-note-list">
             <p>长门骰：11、13、22、33、44、55、66。</p>
@@ -352,11 +352,11 @@ export function RulesPanel({ onBack, backLabel = '返回首页' }: RulesPanelPro
               definitionIds={['point_eight', 'point_five']}
             />
             <RuleExample
-              title="没有该门才卖屁股"
+              title="没有定门牌时背面弃牌"
               desc="掷到点子门但手里没有点子，才可以背面弃 1 张；后手仍可用点子明吃。"
               definitionIds={['yao_si_liu']}
               hiddenIndexes={[0]}
-              hiddenLabel="卖屁股：没有骰子定门时的背面弃牌"
+              hiddenLabel="无门弃牌：没有骰子定门时的背面弃牌"
             />
           </div>
           <p className="rules-footnote">
@@ -366,21 +366,21 @@ export function RulesPanel({ onBack, backLabel = '返回首页' }: RulesPanelPro
         </section>
 
         <section className="rules-section">
-          <h3>6. 活赏、死赏和赏钱</h3>
+          <h3>6. 活赏、死赏和奖励分</h3>
           <p>
             三加六是一对赏。活赏两张都朝上，可以被九九、七七、五五吃，而且有就必须吃；
             八八不能吃赏。最后两墩牌出的一对赏叫孵赏。死赏通常盖住三或六中的一张，
-            表示不能被吃，但死赏没有赏钱。
+            表示不能被吃，但死赏没有奖励分。
           </p>
           <div className="rules-example-grid">
             <RuleExample
               title="活赏"
-              desc="三和六都明出。若别人用九九、七七或五五吃掉，赏钱失效，吃牌的人赢这 2 墩。"
+              desc="三和六都明出。若别人用九九、七七或五五吃掉，奖励分失效，吃牌的人赢这 2 墩。"
               definitionIds={['point_three', 'point_six']}
             />
             <RuleExample
               title="死赏"
-              desc="传统摆法会把其中一张背面朝上，一眼看出是死赏；死赏不能被吃，但也没有赏钱。"
+              desc="传统摆法会把其中一张背面朝上，一眼看出是死赏；死赏不能被吃，但也没有奖励分。"
               definitionIds={['point_three', 'point_six']}
               hiddenIndexes={[0]}
               hiddenLabel="死赏盖牌标记：不是普通弃牌"
@@ -392,9 +392,9 @@ export function RulesPanel({ onBack, backLabel = '返回首页' }: RulesPanelPro
             />
           </div>
           <div className="rules-note-list">
-            <p>中途打一对赏且没被吃：未满 3 墩的玩家每人额外出 2 个，3 墩及以上免出赏钱。</p>
-            <p>最后两墩牌出的赏叫孵赏：未满 3 墩的玩家每人额外出 4 个孵赏钱。</p>
-            <p>打满 8 墩带赏：满 8 墩基础钱和赏钱一起算。</p>
+            <p>中途打一对赏且没被吃：未满 3 墩的玩家每人额外出 2 分，3 墩及以上免出奖励分。</p>
+            <p>最后两墩牌出的赏叫孵赏：未满 3 墩的玩家每人额外出 4 分（孵赏奖励）。</p>
+            <p>打满 8 墩带赏：满 8 墩基础分和奖励分一起算。</p>
           </div>
         </section>
 
@@ -402,7 +402,7 @@ export function RulesPanel({ onBack, backLabel = '返回首页' }: RulesPanelPro
           <h3>7. 明牌、弃牌和复盘</h3>
           <p>
             明打和吃牌都是公开信息，牌面朝上，任何时候都可以点玩家墩数查看。
-            弃牌和卖屁股都必须背面朝上，不能在每墩结束后偷看，必须等整局结束统一翻开复盘。
+            弃牌和无门弃牌都必须背面朝上，不能在每墩结束后偷看，必须等整局结束统一翻开复盘。
           </p>
           <div className="rules-example-grid">
             <RuleExample
@@ -424,8 +424,8 @@ export function RulesPanel({ onBack, backLabel = '返回首页' }: RulesPanelPro
           <h3>8. 结算怎么想</h3>
           <p>
             4 墩是保本线。少于 4 墩要出，多于 4 墩要进；非最后一墩赢家先按自己墩数独立进出，
-            最后一墩赢家承接其他三家的基础净额。赏钱另算，并和基础进出合并抵扣；
-            但已经打到 3 墩及以上的人不用再出赏钱。
+            最后一墩赢家承接其他三家的基础净额。奖励分另算，并和基础进出合并抵扣；
+            但已经打到 3 墩及以上的人不用再出奖励分。
           </p>
           <div className="rules-score-grid">
             {SCORE_ROWS.map((row) => (
@@ -447,13 +447,13 @@ export function RulesPanel({ onBack, backLabel = '返回首页' }: RulesPanelPro
             </div>
           </div>
           <div className="rules-note-list">
-            <p>例：你赢 5 墩但最后一墩不是你赢，没有赏时你基础进 1 个。</p>
-            <p>例：你赢 7 墩，基础就是进 3 个。</p>
-            <p>例：最后赢家赢 6 墩，按“6 接 10”，其他三家基础出分合计 10 个给最后赢家。</p>
-            <p>例：打满 8 墩不带赏，其他三家每人出 8 个。</p>
-            <p>例：普通局里 A 打活赏没被吃，B 已赢 3 墩，B 不出赏钱；0、1、2 墩的人才出。</p>
-            <p>例：满 8 墩中间带赏，其他三家每人出 10 个，拆成基础 8 个加赏钱 2 个。</p>
-            <p>例：满 8 墩最后两墩是孵赏，其他三家每人出 16 个。</p>
+            <p>例：你赢 5 墩但最后一墩不是你赢，没有赏时你基础进 1 分。</p>
+            <p>例：你赢 7 墩，基础就是进 3 分。</p>
+            <p>例：最后赢家赢 6 墩，按“6 接 10”，其他三家基础出分合计 10 分给最后赢家。</p>
+            <p>例：打满 8 墩不带赏，其他三家每人出 8 分。</p>
+            <p>例：普通局里 A 打活赏没被吃，B 已赢 3 墩，B 不出奖励分；0、1、2 墩的人才出。</p>
+            <p>例：满 8 墩中间带赏，其他三家每人出 10 分，拆成基础 8 分加奖励分 2 分。</p>
+            <p>例：满 8 墩最后两墩是孵赏，其他三家每人出 16 分。</p>
           </div>
         </section>
 
@@ -461,8 +461,8 @@ export function RulesPanel({ onBack, backLabel = '返回首页' }: RulesPanelPro
           <h3>最后的口诀</h3>
           <p>
             同门同张数才能吃，吃牌必须明；不吃只看张数，背面弃；骰子定门后有门必须出，
-            无门才卖屁股；没有更大明牌能压的单张可以提速一起出；活赏能被九九、七七、五五吃，
-            死赏不能吃但没有赏钱；最后两墩的赏叫孵赏；3 墩及以上免出赏钱；
+            无门才可背面弃牌；没有更大明牌能压的单张可以提速一起出；活赏能被九九、七七、五五吃，
+            死赏不能吃但没有奖励分；最后两墩的赏叫孵赏；3 墩及以上免出奖励分；
             4 墩保本，最后一墩赢家承接基础净额，背面牌整局结束才翻。
           </p>
         </section>

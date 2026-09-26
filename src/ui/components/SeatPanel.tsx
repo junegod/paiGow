@@ -35,7 +35,7 @@ export function SeatPanel({
         .join(' ')}
       style={{ '--seat-color': seatState.config.color } as CSSProperties}
     >
-      {isDealer ? <span className="seat-panel__dealer">庄</span> : null}
+      {isDealer ? <span className="seat-panel__dealer">先</span> : null}
       <button type="button" className="seat-panel__pier-count" onClick={onInspectWonTricks}>
         {seatState.wonPierCount}
       </button>

@@ -28,16 +28,19 @@ function getSeatName(seatConfigs: SeatConfig[], seat: number): string {
 }
 
 /**
- * 将结算数字转换成“收/出/保本”文案，结算卡片用它拆开基础分和赏钱。
+ * 将结算数字转换成“加分/扣分/不变”文案，结算卡片用它拆开基础分和奖励分。
+ * @param label 积分项目名称。
+ * @param delta 本局积分变化，零分显示不变。
+ * @returns 包含积分单位的变化说明。
  */
 function formatDeltaDetail(label: string, delta: number): string {
   if (delta === 0) {
-    return `${label}保本`
+    return `${label}不变`
   }
 
   return delta > 0
-    ? `${label}收 ${delta} 个`
-    : `${label}出 ${Math.abs(delta)} 个`
+    ? `${label}加 ${delta} 分`
+    : `${label}扣 ${Math.abs(delta)} 分`
 }
 
 /**
@@ -54,6 +57,9 @@ function getDisplaySettlement(round: RoundState) {
 
 /**
  * 弹窗标题只保留结算核心结论，避免手机小屏里把规则解释挤成多行。
+ * @param round 当前结算的牌局。
+ * @param settlement 已重新计算的结算结果。
+ * @returns 基础分与奖励分的简短标题。
  */
 function getSettlementTitle(round: RoundState, settlement: NonNullable<RoundState['settlement']>): string {
   if (settlement.isSweep) {
@@ -65,9 +71,9 @@ function getSettlementTitle(round: RoundState, settlement: NonNullable<RoundStat
     round.rewardOutcome.mode === 'live' &&
     !round.rewardOutcome.wasEaten
       ? round.rewardOutcome.wasLastTwo
-        ? '，另算孵赏钱'
-        : '，另算赏钱'
-      : '，无额外赏钱'
+        ? '，另算孵赏奖励分'
+        : '，另算奖励分'
+      : '，无额外奖励分'
 
   return `基础按 4 墩保本${rewardText}`
 }
@@ -100,8 +106,8 @@ export function SettlementPanel({
     round.rewardOutcome.mode === 'live' &&
     !round.rewardOutcome.wasEaten &&
     round.rewardOutcome.wasLastTwo
-      ? '孵赏钱'
-      : '赏钱'
+      ? '孵赏奖励分'
+      : '奖励分'
 
   return (
     <section className="settlement-panel">

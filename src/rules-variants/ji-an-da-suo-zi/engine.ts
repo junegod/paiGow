@@ -281,7 +281,11 @@ function createPattern(
 
 /**
  * 弃牌只有张数和所属玩家公开，直到整局结束后才翻牌。
- * source 用来区分普通弃牌与掷骰无门后的卖屁股弃牌。
+ * source 用来区分普通弃牌与掷骰无门后的无门弃牌。
+ * @param cards 待背面弃出的牌。
+ * @param note 对当前弃牌原因的公开说明。
+ * @param source 普通弃牌或骰子定门来源。
+ * @returns 不公开牌面的弃牌牌型。
  */
 function createHiddenPattern(
   cards: CardInstance[],
@@ -431,6 +435,11 @@ function mustEatLiveReward(round: RoundState, seat: SeatId): boolean {
 
 /**
  * 根据选牌尝试识别自然明打牌型。
+ * @param cards 当前选中的真实牌实例。
+ * @param source 自然出牌或骰子定门来源。
+ * @param intent 玩家提交的动作意图。
+ * @param options 首手和公开安全单牌等规则边界。
+ * @returns 可识别的合法牌型；空选牌或不匹配时返回空数组。
  */
 function classifyOpenSelection(
   cards: CardInstance[],
@@ -466,7 +475,7 @@ function classifyOpenSelection(
         group: 'reward-dead',
         strength: 100,
         rewardMode: 'dead',
-        note: '死赏不能被吃，也不产生赏钱。',
+        note: '死赏不能被吃，也不产生奖励分。',
         source,
       }),
     ]
@@ -719,6 +728,10 @@ function enumerateFinalLeadPatterns(hand: CardInstance[], round: RoundState): Pl
 
 /**
  * 将领出牌型统一转换成前端按钮，普通领出和最后一手共用同一套文案分支。
+ * @param seat 当前领出座位。
+ * @param pattern 已由规则识别的牌型。
+ * @param isFinalHand 是否为该玩家最后一手牌。
+ * @returns 对应合法意图的按钮和积分说明。
  */
 function createLeadPreparedActions(
   seat: SeatId,
@@ -754,8 +767,8 @@ function createLeadPreparedActions(
         ]),
         label: isFinalHand ? '打死赏' : '打死赏',
         description: isFinalHand
-          ? '最后两墩牌也可以按死赏出，不掷骰；死赏不能被吃，也不产生赏钱。'
-          : '死赏不能被吃，也不产生赏钱。',
+          ? '最后两墩牌也可以按死赏出，不掷骰；死赏不能被吃，也不产生奖励分。'
+          : '死赏不能被吃，也不产生奖励分。',
         intent: 'lead-reward-dead',
         selectedCardIds: pattern.cardInstanceIds,
         emphasis: isFinalHand ? 'primary' : 'secondary',
@@ -799,7 +812,9 @@ function enumerateFinalLeadActions(seatState: SeatState, round: RoundState): Pre
 
 /**
  * 领出阶段只允许明打牌型或主动掷骰。弃牌只能发生在后手响应，
- * 或掷骰定门后确实没有该门牌的“卖屁股”单张场景。
+ * 或掷骰定门后确实没有该门牌的“无门弃牌”单张场景。
+ * @param intent 待判断的动作意图。
+ * @returns 是否属于领出阶段合法的动作类别。
  */
 function isLeadStageIntent(intent: TurnAction['intent']): boolean {
   return (
@@ -844,8 +859,11 @@ function enumerateEatPatterns(hand: CardInstance[], targetPattern: PlayPattern):
 }
 
 /**
- * 卖屁股开墩时没有明面目标牌，但骰子定门仍然有效。
+ * 无门弃牌开墩时没有明面目标牌，但骰子定门仍然有效。
  * 后手若有该门单张，可以明吃并成为当前明面最大牌。
+ * @param hand 当前玩家手牌。
+ * @param forcedDoor 骰子确定且持续有效的门类。
+ * @returns 能响应无门弃牌的同门单张牌型。
  */
 function enumerateForcedDoorEatPatterns(
   hand: CardInstance[],
@@ -880,6 +898,9 @@ function deduplicatePatterns(patterns: PlayPattern[]): PlayPattern[] {
 
 /**
  * 基于当前轮到的玩家枚举所有可执行动作。
+ * @param round 当前牌局。
+ * @param seat 请求动作的座位。
+ * @returns 当前回合可执行的合法动作列表。
  */
 export function listTurnActions(round: RoundState, seat: SeatId): PreparedAction[] {
   if (round.currentSeat !== seat) {
@@ -904,7 +925,7 @@ export function listTurnActions(round: RoundState, seat: SeatId): PreparedAction
 
     return seatState.hand.map((card) => ({
       id: createStableId('action', [seat, 'dice-hidden', card.id]),
-      label: `卖屁股弃牌 ${getCardDefinition(card.definitionId).name}`,
+      label: `无门弃牌 ${getCardDefinition(card.definitionId).name}`,
       description: '掷骰所定门类缺牌，只能背面弃牌一张。',
       intent: 'resolve-dice-hidden' as const,
       selectedCardIds: [card.id],
@@ -956,7 +977,7 @@ export function listTurnActions(round: RoundState, seat: SeatId): PreparedAction
     label: `吃 ${pattern.label}`,
     description: round.currentTrick?.currentTargetPattern
       ? `用 ${pattern.label} 明吃当前牌。`
-      : `卖屁股开墩后，用定门 ${pattern.label} 明吃。`,
+      : `无门弃牌开墩后，用定门 ${pattern.label} 明吃。`,
     intent: 'respond-eat' as const,
     selectedCardIds: pattern.cardInstanceIds,
     emphasis: 'primary' as const,
@@ -978,6 +999,10 @@ export function listTurnActions(round: RoundState, seat: SeatId): PreparedAction
 
 /**
  * 将当前选牌解释成前端可以展示的按钮与提示。
+ * @param round 当前牌局。
+ * @param seat 当前选牌的座位。
+ * @param selectedCardIds 已选牌实例标识。
+ * @returns 可执行动作与规则提示，非当前玩家回合不提供动作。
  */
 export function previewSelection(
   round: RoundState,
@@ -1037,7 +1062,7 @@ export function previewSelection(
       ),
       hint: round.pendingDice.hasMatchingDoor
         ? '这张牌会作为定门明牌打出。'
-        : '没有对应门类，可以任选 1 张背面卖屁股。',
+        : '没有对应门类，可以任选 1 张牌背面朝上弃出。',
     }
   }
 
@@ -1115,7 +1140,7 @@ export function previewSelection(
         label: `吃 ${pattern.label}`,
         description: canEatCurrentTarget
           ? `用 ${pattern.label} 明吃当前公开牌。`
-          : `卖屁股开墩后，用定门 ${pattern.label} 明吃。`,
+          : `无门弃牌开墩后，用定门 ${pattern.label} 明吃。`,
         intent: 'respond-eat',
         selectedCardIds,
         emphasis: 'primary',
@@ -1146,6 +1171,9 @@ export function previewSelection(
 
 /**
  * 当前轮到谁时，给出一条简洁的规则提示。
+ * @param round 当前牌局。
+ * @param seat 需要提示的座位。
+ * @returns 与定门、领出或响应阶段对应的操作提示。
  */
 export function getTurnHint(round: RoundState, seat: SeatId): string {
   if (round.currentSeat !== seat) {
@@ -1155,7 +1183,7 @@ export function getTurnHint(round: RoundState, seat: SeatId): string {
   if (round.pendingDice) {
     return round.pendingDice.hasMatchingDoor
       ? '掷骰已定门，请选择该门的一张牌明打。'
-      : '掷骰所定门类缺牌，请背面弃牌 1 张卖屁股。'
+      : '掷骰所定门类缺牌，请背面弃牌 1 张。'
   }
 
   if (!round.currentTrick) {
@@ -1581,6 +1609,11 @@ function appendResponsePlay(
 
 /**
  * 根据动作意图与选牌得到最终牌型。
+ * @param seatState 当前玩家座位及手牌。
+ * @param action 玩家动作及选牌标识。
+ * @param options 当前领出场景允许的规则边界。
+ * @returns 动作实际使用的牌与最终牌型。
+ * @throws 选牌无法满足指定意图时拒绝构造牌型。
  */
 function resolvePatternFromAction(
   seatState: SeatState,
@@ -1598,7 +1631,7 @@ function resolvePatternFromAction(
       pattern: createHiddenPattern(
         cards,
         action.intent === 'resolve-dice-hidden'
-          ? '无定门牌，卖屁股弃牌。'
+          ? '无定门牌，无门弃牌。'
           : '后手选择弃牌，背面放置。',
         action.intent === 'resolve-dice-hidden' ? 'dice' : 'hidden',
       ),
@@ -1639,6 +1672,11 @@ function resolvePatternFromAction(
 
 /**
  * 应用一条玩家动作。
+ * @param match 当前整场状态。
+ * @param action 玩家动作及选牌信息。
+ * @param rng 骰子等随机流程的来源。
+ * @returns 应用动作后的整场状态及公开事件消息。
+ * @throws 非当前座位、选牌或意图不满足规则时拒绝动作。
  */
 export function submitAction(
   match: MatchState,
@@ -1714,7 +1752,7 @@ export function submitAction(
         throw new Error('掷骰定门后必须打出对应门类的一张牌。')
       }
     } else if (action.intent !== 'resolve-dice-hidden') {
-      throw new Error('掷骰定门后没有对应门类时，只能背面卖屁股 1 张。')
+      throw new Error('掷骰定门后没有对应门类时，只能无门弃牌 1 张。')
     }
 
     const { cards, pattern } = resolvePatternFromAction(seatState, action)
@@ -1722,7 +1760,7 @@ export function submitAction(
     const trickIndex = round.publicTrickLog.length + 1
     const message = pattern.isOpen
       ? `${seatState.config.name} 定门明打 ${pattern.label}。`
-      : `${seatState.config.name} 无定门牌，卖屁股弃牌 1 张。`
+      : `${seatState.config.name} 无定门牌，无门弃牌 1 张。`
     createLeadTrick(
       round,
       action.seat,

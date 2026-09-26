@@ -159,7 +159,7 @@ export interface TrickRecord {
   cardCount: number
   visibleWinningSeat: SeatId
   /**
-   * 掷骰无门卖屁股开墩时记录定到的门，方便复盘和机器人审计还原“后手同门可吃”规则。
+   * 掷骰后无门弃牌开墩时记录定到的门，方便复盘和机器人审计还原“后手同门可吃”规则。
    */
   forcedDoor?: DoorId
   plays: PlayedAction[]
@@ -237,7 +237,7 @@ export interface CurrentTrickState {
   currentWinningSeat: SeatId
   currentTargetPattern: PlayPattern | null
   /**
-   * 掷骰无门卖屁股开墩时，保留骰子定到的门。
+   * 掷骰后无门弃牌开墩时，保留骰子定到的门。
    * 后手有该门单张时可以明吃，并成为本回合当前明面最大。
    */
   forcedDoor?: DoorId
@@ -417,7 +417,7 @@ export interface BotObservedTrick {
   cardCount: number
   /** 桌面明面上显示为领先的座位。 */
   visibleWinningSeat: SeatId
-  /** 掷骰卖屁股时公开确定的门类。 */
+  /** 掷骰无门弃牌时公开确定的门类。 */
   forcedDoor?: DoorId
   /** 本墩各座位的脱敏出牌记录。 */
   plays: BotObservedPlay[]
@@ -448,7 +448,7 @@ export interface BotObservedCurrentTrick {
   currentWinningSeat: SeatId
   /** 当前可被明吃的公开目标牌型；暗领时固定为 null。 */
   currentTargetPattern: BotPublicPattern | null
-  /** 掷骰卖屁股时公开确定的门类。 */
+  /** 掷骰无门弃牌时公开确定的门类。 */
   forcedDoor?: DoorId
   /** 下一位需要响应的座位。 */
   responseSeat: SeatId | null

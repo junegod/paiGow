@@ -37,6 +37,7 @@ import { OpeningCeremonyLayer } from '@/ui/components/OpeningCeremonyLayer'
 import { OnlineBrowserPanel } from '@/ui/components/OnlineBrowserPanel'
 import { OnlineRoomPanel } from '@/ui/components/OnlineRoomPanel'
 import { SeatPanel } from '@/ui/components/SeatPanel'
+import { PrivacyPanel } from '@/ui/components/PrivacyPanel'
 import { SettingsPanel } from '@/ui/components/SettingsPanel'
 import { SettlementPanel } from '@/ui/components/SettlementPanel'
 import { TrickArena } from '@/ui/components/TrickArena'
@@ -349,7 +350,7 @@ function App() {
       return {
         action,
         title: '中途重新开始？',
-        message: '当前积分局还没打完，重新开始会扣 4 分，防止反复刷好牌。余额不足 4 分时只扣剩余积分。',
+        message: '当前积分局还没打完，重新开始会扣 4 分，防止反复刷好牌。积分不足 4 分时只扣剩余积分。',
         confirmLabel: '扣 4 分并重新开始',
       }
     }
@@ -357,7 +358,7 @@ function App() {
     return {
       action,
       title: '中途返回首页？',
-      message: '当前积分局还没打完，返回首页会扣 4 分，防止反复刷好牌。余额不足 4 分时只扣剩余积分。',
+      message: '当前积分局还没打完，返回首页会扣 4 分，防止反复刷好牌。积分不足 4 分时只扣剩余积分。',
       confirmLabel: '扣 4 分并返回首页',
     }
   }
@@ -432,7 +433,7 @@ function App() {
   }
 
   /**
-   * 定制牌局用于验规则和赏钱，不写入积分流水。
+   * 定制牌局用于验规则和奖励分，不写入积分流水。
    */
   function startCustomRound(options?: Parameters<typeof activeController.startRound>[0]): void {
     setIsCurrentMatchScored(false)
@@ -478,8 +479,18 @@ function App() {
       onClose={() => setIsSettingsOpen(false)}
       onAudioPreferencesChange={localPlayerData.setAudioPreferences}
       onSkipOpeningCeremonyChange={localPlayerData.setSkipOpeningCeremony}
+      onlineConsentGranted={online.consent.granted}
+      onRevokeOnlineConsent={() => {
+        // 先退出当前房间并关闭网络，再撤回许可，避免撤回后仍有联机数据传输。
+        online.leaveOnlineMode()
+        online.consent.revoke()
+      }}
     />
   ) : null
+
+  if (online.consent.requested) {
+    return <PrivacyPanel onClose={online.consent.cancel} onAccept={online.consent.accept} />
+  }
 
   if (online.mode === 'browser') {
     return (

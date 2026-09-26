@@ -8,6 +8,7 @@ import '@/ui/styles/actionPanel.css'
 import '@/ui/styles/gameHelp.css'
 import '@/ui/styles/lobbyDifficulty.css'
 import '@/ui/styles/settingsPanel.css'
+import '@/ui/styles/privacyPanel.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
