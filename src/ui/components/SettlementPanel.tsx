@@ -1,7 +1,14 @@
 import type { RoundState, SeatConfig } from '@/rules-core/types'
 import { calculateSettlement } from '@/rules-variants/ji-an-da-suo-zi/scoring'
 
+/** 结算展示与离局操作；落账门禁由上层统一处理。 */
 interface SettlementPanelProps {
+  /** 本机积分正在保存，期间禁止离局和重复点击。 */
+  saving?: boolean
+  /** 保存失败提示；保留结算内容并提供重试入口。 */
+  saveError?: string | null
+  /** 重试同一局幂等落账。 */
+  onRetrySave?: () => void
   /** 当前已完成或待展示结算的单局状态。 */
   round: RoundState
   /** 四个座位配置，用于把座位编号转换为玩家名称。 */
@@ -67,9 +74,15 @@ function getSettlementTitle(round: RoundState, settlement: NonNullable<RoundStat
 
 /**
  * 结算区负责展示输赢明细，并提供下一局入口。
+ * 保存失败时保留本局，允许查看回合记录或显式重试。
+ * @param props 已结算牌局、保存状态与受保护的导航入口。
+ * @returns 结算界面；尚未结算时返回空。
  */
 export function SettlementPanel({
   round,
+  saving = false,
+  saveError = null,
+  onRetrySave,
   seatConfigs,
   onInspectHistory,
   onNextRound,
@@ -124,6 +137,15 @@ export function SettlementPanel({
         ))}
       </div>
 
+      {saving ? <p role="status">正在保存本局积分，请稍候…</p> : null}
+      {saveError ? (
+        <div className="settlement-save-error" role="alert">
+          <p>{saveError}</p>
+          <button type="button" className="hero-button hero-button--ghost" disabled={saving} onClick={onRetrySave}>
+            重试保存
+          </button>
+        </div>
+      ) : null}
       <div className="settlement-panel__actions">
         <button type="button" className="hero-button hero-button--ghost" onClick={onInspectHistory}>
           回合记录
@@ -131,6 +153,7 @@ export function SettlementPanel({
         <button
           type="button"
           className="hero-button hero-button--ghost"
+          disabled={saving || Boolean(saveError)}
           onClick={() => {
             void onRestartMatch()
           }}
@@ -140,7 +163,7 @@ export function SettlementPanel({
         <button
           type="button"
           className="hero-button hero-button--primary"
-          disabled={!canStartNextRound}
+          disabled={!canStartNextRound || saving || Boolean(saveError)}
           title={canStartNextRound ? undefined : '等待房主开始下一局'}
           onClick={() => {
             void onNextRound()

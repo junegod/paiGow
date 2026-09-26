@@ -341,6 +341,9 @@ export function LobbyPanel({
             </div>
           </section>
 
+          {onlineError || localUserPanel?.errorMessage ? (
+            <p className="home-lobby__error" role="alert">{onlineError ?? localUserPanel?.errorMessage}</p>
+          ) : null}
           <p className="home-lobby__disclaimer">
             本游戏为村里非物质文化遗产传统棋盘游戏，仅村内部娱乐，非赌博工具。
           </p>

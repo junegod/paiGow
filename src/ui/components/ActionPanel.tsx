@@ -2,7 +2,10 @@ import type { CardDefinition, CardInstance, PreparedAction, SeatState } from '@/
 
 import { CardStrip } from '@/ui/components/CardStrip'
 
+/** 底部手牌、规则提示与玩家操作。 */
 interface ActionPanelProps {
+  /** 在牌桌内查看完整提示与规则。 */
+  onHelp: () => void
   seatState: SeatState | null
   cardDefinitions: Record<string, CardDefinition>
   selectedCardIds: string[]
@@ -132,9 +135,12 @@ function createVisibleActionButtons(
 /**
  * 底部操作区展示当前可见手牌。轮到机器人或其他座位时仍保留底部玩家手牌，
  * 但关闭点选、拖动和出牌按钮，避免操作态与展示态混在一起。
+ * @param props 自己的手牌、规则提示与允许执行的交互。
+ * @returns 底部手牌与操作区，提供局内规则查看入口。
  */
 export function ActionPanel({
   seatState,
+  onHelp,
   cardDefinitions,
   selectedCardIds,
   handCards,
@@ -170,8 +176,8 @@ export function ActionPanel({
     <section className="action-panel">
       <div className="action-panel__header">
         <div>
-          <p className="action-panel__seat">{seatState.config.name}</p>
-          <p className="action-panel__hint">{hint}</p>
+          <p className="action-panel__seat">{canInteract ? '轮到你了' : seatState.config.name}</p>
+          <p className="action-panel__hint" aria-live="polite">{hint}</p>
         </div>
         {canOrganizeHand ? (
           <button
@@ -184,6 +190,7 @@ export function ActionPanel({
             {isOrganizingHand ? '整理中' : '整理'}
           </button>
         ) : null}
+        <button type="button" className="action-panel__help" onClick={onHelp} aria-label="查看规则与当前提示">规则</button>
         {roundBadge}
       </div>
 

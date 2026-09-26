@@ -1,11 +1,10 @@
 import {
   useEffect,
-  useEffectEvent,
   useMemo,
-  useRef,
   useState,
 } from 'react'
 
+import { useSettlementPersistence } from '@/app/useSettlementPersistence'
 import { useGameController } from '@/app/useGameController'
 import { useOnlineController } from '@/app/useOnlineController'
 import { DEFAULT_BOT_DIFFICULTY } from '@/app/botDifficulty'
@@ -14,7 +13,6 @@ import type {
   CardDefinition,
   DiceRoll,
   MatchState,
-  RoundState,
   SeatConfig,
   SeatId,
 } from '@/rules-core/types'
@@ -23,6 +21,9 @@ import {
   playGameSound,
 } from '@/ui/audio/gameAudio'
 import { useGameAudio } from '@/ui/audio/useGameAudio'
+import { GameHelpPanel } from '@/ui/components/GameHelpPanel'
+import { TableMenu } from '@/ui/components/TableMenu'
+import { describeTurnSelection } from '@/ui/turnGuidance'
 import { ActionPanel } from '@/ui/components/ActionPanel'
 import { DiceBowlControl } from '@/ui/components/DiceBowlControl'
 import { InspectorDrawer } from '@/ui/components/InspectorDrawer'
@@ -115,6 +116,10 @@ function formatDoorName(door: string): string {
   return '点子门'
 }
 
+/**
+ * 组合单机与联机控制器，统一牌桌展示、积分离局门禁和局内帮助入口。
+ * @returns 当前大厅或牌桌界面。
+ */
 function App() {
   const localPlayerData = useLocalPlayerData()
   const botDifficulty =
@@ -124,7 +129,7 @@ function App() {
   const online = useOnlineController(localPlayerData.snapshot?.activeUser?.nickname ?? '玩家')
   const activeController = online.mode === 'match' ? online.controller : controller
   const [drawerState, setDrawerState] = useState<DrawerState>(null)
-  const [isMenuOpen, setIsMenuOpen] = useState(false)
+  const [isHelpOpen, setIsHelpOpen] = useState(false)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [onlineRoomCode, setOnlineRoomCode] = useState('')
   const [onlinePlayerName, setOnlinePlayerName] = useState('')
@@ -134,7 +139,6 @@ function App() {
   const [leaveConfirmError, setLeaveConfirmError] = useState<string | null>(null)
   const [isLeavePenaltySubmitting, setIsLeavePenaltySubmitting] = useState(false)
   const [lastVisibleDiceRoll, setLastVisibleDiceRoll] = useState<DiceRoll | null>(null)
-  const recordedLocalRoundKeyRef = useRef<string | null>(null)
 
   /** 本地用户加载完成后为联机大厅补上默认昵称，但不覆盖玩家已经输入的内容。 */
   useEffect(() => {
@@ -165,7 +169,7 @@ function App() {
     !activeController.isTrickReviewing &&
     !activeController.isDiceReviewing &&
     activeController.visibleActionSeatState?.seat === activeController.currentSeat &&
-    (online.mode !== 'match' || online.connectionStatus === 'connected') &&
+    (online.mode !== 'match' || (online.connectionStatus === 'connected' && online.isSynchronized)) &&
     // 联机模式下面板展示的是"自己座位"，只要当前回合就是自己即可操作。
     (online.mode === 'match' || activeController.currentSeatState?.config.mode === 'human')
   const actionPanelSelectedCardIds = canUseActionPanel ? activeController.selectedCardIds : []
@@ -174,7 +178,9 @@ function App() {
     canUseActionPanel
       ? actionPanelPreparedActions.find((action) => action.intent === 'roll-dice') ?? null
       : null
-  const actionPanelHint = activeController.isTrickReviewing
+  const actionPanelHint = online.mode === 'match' && !online.isSynchronized
+    ? '正在恢复连接并同步牌局，请稍候再出牌。'
+    : activeController.isTrickReviewing
     ? '本回合出牌已完成，停留 2 秒方便看清牌面。'
     : activeController.isOpeningCeremonyActive
       ? '正在洗牌抓牌，抓完后只亮你的手牌。'
@@ -182,7 +188,9 @@ function App() {
       ? '骰子正在滚动并展示结果，稍等一下看清点数。'
     : rollActionForBowl
       ? '点右上角的碗掷骰。'
-    : activeController.selectionPreview.hint
+    : canUseActionPanel
+      ? describeTurnSelection(currentRound, activeController.selectionPreview)
+      : activeController.selectionPreview.hint
   const activeDiceRoll =
     currentRound?.pendingDice?.roll ??
     (
@@ -209,9 +217,12 @@ function App() {
       : null
   const shouldWarnBeforeLeavingScoredRound = Boolean(activeScoredRoundKey)
 
-  const recordSettledRoundLocally = useEffectEvent((round: RoundState, matchState: MatchState) =>
-    localPlayerData.recordSettledRound(matchState, round),
-  )
+  const settlementPersistence = useSettlementPersistence({
+    match: currentMatchState,
+    userId: activeLocalUserId,
+    enabled: isCurrentMatchScored && online.mode === 'offline',
+    record: localPlayerData.recordSettledRound,
+  })
 
   /**
    * 骰碗作为桌面常驻物件时不能空着；没有当前掷骰态时，
@@ -247,42 +258,6 @@ function App() {
 
   useAppGestureGuards()
   useGameAudio(currentRound, activeController.isOpeningCeremonyActive, audioPreferences)
-
-  /**
-   * 每局结算后给当前本机用户记一条积分流水。服务层按局唯一键去重，
-   * 这里的 ref 只是减少同一轮 React 渲染里的重复写入。
-   */
-  useEffect(() => {
-    if (
-      !isCurrentMatchScored ||
-      online.mode !== 'offline' ||
-      !currentMatchState ||
-      !currentRound?.settlement ||
-      currentRound.phase !== 'settled' ||
-      !activeLocalUserId
-    ) {
-      return
-    }
-
-    const localRoundKey = `${activeLocalUserId}:${currentMatchState.matchId}:${currentRound.roundNumber}`
-
-    if (recordedLocalRoundKeyRef.current === localRoundKey) {
-      return
-    }
-
-    recordedLocalRoundKeyRef.current = localRoundKey
-    void recordSettledRoundLocally(currentRound, currentMatchState)
-  }, [
-    activeLocalUserId,
-    currentMatchState,
-    currentMatchState?.matchId,
-    currentRound,
-    currentRound?.phase,
-    currentRound?.roundNumber,
-    currentRound?.settlement,
-    isCurrentMatchScored,
-    online.mode,
-  ])
 
   /**
    * 选牌属于明确的手势反馈，直接播放轻触音。
@@ -340,10 +315,9 @@ function App() {
   /**
    * 真正执行菜单动作。这里不负责扣分，只做牌桌状态切换，
    * 这样确认弹窗、免确认场景和后续扩展动作都能复用。
+   * @param action 已通过上层确认或落账门禁的离局操作。
    */
   function executeMenuLeaveAction(action: LeaveConfirmAction): void {
-    setIsMenuOpen(false)
-
     // 联机模式没有本地扣分逻辑；重开走联机重开，返回走联机离开。
     if (online.mode !== 'offline') {
       if (action === 'restart-round') {
@@ -389,15 +363,21 @@ function App() {
   }
 
   /**
-   * 牌桌菜单动作入口。需要扣分时先打开游戏内弹窗，不再使用浏览器系统 confirm。
+   * 牌桌菜单动作入口。未完成的积分局先确认扣分，结算局先完成落账。
+   * @param action 玩家申请的离局操作。
    */
   function requestMenuLeave(action: LeaveConfirmAction): void {
+    // 菜单和结算按钮必须共用落账门禁，避免从菜单绕过保存失败提示。
+    if (currentRound?.phase === 'settled' && online.mode === 'offline') {
+      void settlementPersistence.persistAndRun(() => executeMenuLeaveAction(action))
+      return
+    }
+
     if (!shouldConfirmMenuLeave()) {
       executeMenuLeaveAction(action)
       return
     }
 
-    setIsMenuOpen(false)
     setLeaveConfirmError(null)
     setLeaveConfirmState(createLeaveConfirmState(action))
   }
@@ -444,28 +424,6 @@ function App() {
   }
 
   /**
-   * 结算页离开或进入下一局前强制等待本机积分落账。
-   * 自动记账 effect 仍保留用于即时刷新，这里兜底解决用户快速点击返回时分数还没写入的问题。
-   */
-  async function persistCurrentSettlementForScore(): Promise<void> {
-    if (
-      !isCurrentMatchScored ||
-      online.mode !== 'offline' ||
-      !currentMatchState ||
-      !currentRound?.settlement ||
-      currentRound.phase !== 'settled' ||
-      !activeLocalUserId
-    ) {
-      return
-    }
-
-    const localRoundKey = `${activeLocalUserId}:${currentMatchState.matchId}:${currentRound.roundNumber}`
-
-    recordedLocalRoundKeyRef.current = localRoundKey
-    await localPlayerData.recordSettledRound(currentMatchState, currentRound)
-  }
-
-  /**
    * 首页普通单机开始，结算会写入本机积分。
    */
   function startScoredRound(options?: Parameters<typeof activeController.startRound>[0]): void {
@@ -483,6 +441,7 @@ function App() {
 
   /**
    * 结算页返回首页时先落积分，再恢复普通积分模式。
+   * @returns 离局处理完成；写入失败时保留结算页并提示重试。
    */
   async function restartMatchFromSettlement(): Promise<void> {
     if (online.mode === 'match') {
@@ -490,13 +449,15 @@ function App() {
       return
     }
 
-    await persistCurrentSettlementForScore()
-    setIsCurrentMatchScored(true)
-    activeController.restartMatch()
+    await settlementPersistence.persistAndRun(() => {
+      setIsCurrentMatchScored(true)
+      activeController.restartMatch()
+    })
   }
 
   /**
    * 结算页继续下一局也要先完成本局落账，避免连续开局时漏记积分。
+   * @returns 下一局申请处理完成；写入失败时不推进牌局。
    */
   async function startNextRoundFromSettlement(): Promise<void> {
     if (online.mode === 'match') {
@@ -506,8 +467,7 @@ function App() {
       return
     }
 
-    await persistCurrentSettlementForScore()
-    activeController.startRound()
+    await settlementPersistence.persistAndRun(() => activeController.startRound())
   }
 
   const settingsPanel = isSettingsOpen ? (
@@ -618,62 +578,23 @@ function App() {
             <span>房间 {online.room.roomCode}</span>
             <strong className={`online-table-status__connection online-table-status__connection--${online.connectionStatus}`}>
               <i aria-hidden="true" />
-              {online.connectionStatus === 'connected' ? '已连接' : '正在重连'}
+              {online.connectionStatus !== 'connected' ? '正在重连' : online.isSynchronized ? '已连接' : '正在同步'}
             </strong>
           </div>
         ) : null}
 
-        <button
-          type="button"
-          className={`table-menu-button ${isMenuOpen ? 'table-menu-button--open' : ''}`}
-          aria-label="打开菜单"
-          aria-expanded={isMenuOpen}
-          onClick={() => setIsMenuOpen((previousValue) => !previousValue)}
-        >
-          <span className="table-menu-button__icon" aria-hidden="true" />
-        </button>
-        {isMenuOpen ? (
-          <>
-            <button
-              type="button"
-              aria-label="收起菜单"
-              className="table-menu-dismiss"
-              onClick={() => setIsMenuOpen(false)}
-            />
-            <div className="table-menu-dropdown" role="menu" aria-label="牌桌菜单">
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setIsMenuOpen(false)
-                  setIsSettingsOpen(true)
-                }}
-              >
-                设置
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                disabled={online.mode === 'match' && !online.isHost}
-                title={online.mode === 'match' && !online.isHost ? '只有房主可以重新开始' : undefined}
-                onClick={() => {
-                  requestMenuLeave('restart-round')
-                }}
-              >
-                {online.mode === 'match' && !online.isHost ? '等待房主重开' : '重新开始'}
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  requestMenuLeave('return-home')
-                }}
-              >
-                返回首页
-              </button>
-            </div>
-          </>
+        {online.mode === 'match' && (online.error || online.notice) ? (
+          <p className="table-connection-notice" role={online.error ? 'alert' : 'status'}>
+            {online.error ?? online.notice}
+          </p>
         ) : null}
+
+        <TableMenu
+          onSettings={() => setIsSettingsOpen(true)}
+          onHelp={() => setIsHelpOpen(true)}
+          onLeave={requestMenuLeave}
+          canRestart={online.mode !== 'match' || (online.isHost && online.isSynchronized && currentRound.phase === 'settled')}
+        />
 
         <DiceBowlControl
           roll={bowlDisplayRoll}
@@ -737,6 +658,7 @@ function App() {
           selectedCardIds={actionPanelSelectedCardIds}
           handCards={activeController.visibleActionHandCards}
           hint={actionPanelHint}
+          onHelp={() => setIsHelpOpen(true)}
           roundNumber={currentRound.roundNumber}
           preparedActions={actionPanelPreparedActions}
           canInteract={canUseActionPanel}
@@ -770,13 +692,27 @@ function App() {
         <SettlementPanel
           round={currentRound}
           seatConfigs={displaySeatConfigs}
+          saving={settlementPersistence.isSaving}
+          saveError={settlementPersistence.error}
+          onRetrySave={() => { void settlementPersistence.retry() }}
           onInspectHistory={() => setDrawerState({ type: 'history' })}
           onNextRound={startNextRoundFromSettlement}
-          canStartNextRound={online.mode !== 'match' || online.isHost}
+          canStartNextRound={online.mode !== 'match' || (online.isHost && online.isSynchronized)}
           onRestartMatch={restartMatchFromSettlement}
         />
       </div>
 
+      <GameHelpPanel
+        open={isHelpOpen}
+        round={currentRound}
+        ruleSet={activeController.ruleSet}
+        seat={activeController.visibleActionSeatState?.seat ?? 0}
+        hint={actionPanelHint}
+        canInteract={canUseActionPanel}
+        practice={online.mode === 'offline' && !isCurrentMatchScored}
+        onSelect={activeController.setSelectedCardIds}
+        onClose={() => setIsHelpOpen(false)}
+      />
       <InspectorDrawer
         open={drawerMeta !== null}
         title={drawerMeta?.title ?? ''}

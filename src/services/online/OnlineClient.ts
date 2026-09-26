@@ -3,25 +3,12 @@ import type {
   OnlineClientPayload,
   OnlineServerMessage,
 } from '@/services/online/types'
-import type {
-  MatchState,
-  SeatId,
-  StartRoundOptions,
-  TrickRecord,
-  TurnAction,
-} from '@/rules-core/types'
-import { mapSeatForViewer } from '@/services/online/viewerSeats'
+import type { TurnAction } from '@/rules-core/types'
+import type { OnlineSessionSnapshot } from '@/services/online/onlineSession'
 
-/** 断线后需要恢复的联机会话。 */
-export interface OnlineSessionSnapshot {
-  roomCode: string
-  playerToken: string
-  playerName: string
-  seat: SeatId
-}
-
-/** 浏览器 localStorage 里的联机会话键。 */
-const ONLINE_SESSION_STORAGE_KEY = 'da-suo-zi.online-session'
+/** 心跳间隔与响应期限兼顾移动网络抖动和断网后的及时恢复。 */
+const HEARTBEAT_INTERVAL_MS = 25_000
+const CONNECTION_TIMEOUT_MS = 10_000
 
 /**
  * WebSocket 客户端封装，负责连接、心跳、自动重连和消息 JSON 编解码。
@@ -32,6 +19,8 @@ export class OnlineClient {
   private socket: WebSocket | null = null
   private reconnectTimer: number | null = null
   private heartbeatTimer: number | null = null
+  /** 建连或等待心跳响应的期限，超时后主动更换失活连接。 */
+  private responseTimer: number | null = null
   private reconnectAttempt = 0
   private disposed = false
   private currentStatus: OnlineClientStatus = 'idle'
@@ -85,20 +74,24 @@ export class OnlineClient {
    * 建立连接。已有连接时不会重复建立。
    */
   public connect(): void {
-    if (this.disposed || this.socket) {
+    if (this.socket) {
       return
     }
 
+    // 显式重新连接允许组件在 StrictMode 清理后再次挂载。
+    this.disposed = false
     this.setStatus('connecting')
     const socket = new WebSocket(this.url)
     // 创建后立即占用当前连接槽，避免 React StrictMode 重跑 effect 时并发建立两条连接。
     this.socket = socket
+    this.responseTimer = window.setTimeout(() => this.reconnect(), CONNECTION_TIMEOUT_MS)
     socket.onopen = () => {
       if (this.socket !== socket) {
         socket.close()
         return
       }
 
+      this.clearResponseTimer()
       this.reconnectAttempt = 0
       this.setStatus('connected')
       this.flushPendingMessages()
@@ -107,6 +100,9 @@ export class OnlineClient {
     socket.onmessage = (event) => {
       try {
         const message = JSON.parse(String(event.data)) as OnlineServerMessage
+        if (message.type === 'pong') {
+          this.clearResponseTimer()
+        }
 
         for (const listener of this.listeners) {
           listener(message)
@@ -137,6 +133,7 @@ export class OnlineClient {
    */
   public disconnect(): void {
     this.disposed = true
+    this.pendingMessages = []
     this.stopTimers()
     this.socket?.close()
     this.detachSocket(this.socket)
@@ -268,13 +265,25 @@ export class OnlineClient {
   }
 
   /**
-   * 发送任意协议消息；连接未就绪时静默丢弃，由重连兜底。
+   * 发送协议消息。建连期间只保留可恢复的请求，不排队补发过期出牌或开局动作。
    *
    * @param message 客户端消息。
    */
   private send(message: OnlineClientPayload): void {
+    if (this.disposed) {
+      return
+    }
     if (this.socket?.readyState !== WebSocket.OPEN) {
-      this.pendingMessages.push(message)
+      // 动作依赖当前回合，重连后必须先同步再由玩家重新选择，不能补发旧牌。
+      if (message.type === 'submit-action' || message.type === 'start-match' || message.type === 'configure-bots') {
+        this.emit({ type: 'error', code: 'server-error', message: '连接正在恢复，请同步牌局后重试。' })
+        return
+      }
+      if (message.type !== 'ping') {
+        // 合并重复查询，防止长时间断网时大厅轮询无限积压。
+        this.pendingMessages = this.pendingMessages.filter((pending) => pending.type !== message.type)
+        this.pendingMessages.push(message)
+      }
       this.connect()
       return
     }
@@ -315,10 +324,8 @@ export class OnlineClient {
     if (this.heartbeatTimer !== null) {
       window.clearInterval(this.heartbeatTimer)
     }
-
-    this.heartbeatTimer = window.setInterval(() => {
-      this.send({ type: 'ping' })
-    }, 25_000)
+    this.probeConnection()
+    this.heartbeatTimer = window.setInterval(() => this.probeConnection(), HEARTBEAT_INTERVAL_MS)
   }
 
   /**
@@ -363,6 +370,7 @@ export class OnlineClient {
    * 清理心跳和重连计时器。
    */
   private stopTimers(): void {
+    this.clearResponseTimer()
     if (this.reconnectTimer !== null) {
       window.clearTimeout(this.reconnectTimer)
       this.reconnectTimer = null
@@ -390,227 +398,40 @@ export class OnlineClient {
       listener(status)
     }
   }
+
+  /**
+   * 主动丢弃失活连接并重连；切回前台时也使用此入口，恢复后重新验证座位。
+   * 先解绑旧连接再关闭，避免迟到的 close 事件误清理新连接。
+   */
+  public reconnect(): void {
+    if (this.disposed) {
+      return
+    }
+    const previousSocket = this.socket
+    this.detachSocket(previousSocket)
+    previousSocket?.close()
+    this.setStatus('reconnecting')
+    this.scheduleReconnect()
+  }
+
+  /** 清理建连或心跳超时计时器，避免旧响应期限影响后续连接。 */
+  private clearResponseTimer(): void {
+    if (this.responseTimer !== null) {
+      window.clearTimeout(this.responseTimer)
+      this.responseTimer = null
+    }
+  }
+
+  /** 检测双向链路；只有收到 pong 才取消超时，socket 的 OPEN 状态并不代表网络可用。 */
+  private probeConnection(): void {
+    if (this.socket?.readyState !== WebSocket.OPEN || this.responseTimer !== null) {
+      return
+    }
+    this.responseTimer = window.setTimeout(() => this.reconnect(), CONNECTION_TIMEOUT_MS)
+    this.send({ type: 'ping' })
+  }
+
 }
 
 /** 客户端连接状态。 */
 export type OnlineClientStatus = 'idle' | 'connecting' | 'connected' | 'reconnecting'
-
-/**
- * 读取本地联机会话。
- *
- * @returns 会话或 null。
- */
-export function readOnlineSession(): OnlineSessionSnapshot | null {
-  try {
-    const rawSession = localStorage.getItem(ONLINE_SESSION_STORAGE_KEY)
-
-    if (!rawSession) {
-      return null
-    }
-
-    const session = JSON.parse(rawSession) as OnlineSessionSnapshot
-
-    return session.roomCode && session.playerToken
-      ? session
-      : null
-  } catch {
-    return null
-  }
-}
-
-/**
- * 保存本地联机会话，断线或刷新后自动找回座位。
- *
- * @param session 需要保存的会话。
- */
-export function saveOnlineSession(session: OnlineSessionSnapshot): void {
-  localStorage.setItem(ONLINE_SESSION_STORAGE_KEY, JSON.stringify(session))
-}
-
-/**
- * 离开联机模式时清理本地会话。
- */
-export function clearOnlineSession(): void {
-  localStorage.removeItem(ONLINE_SESSION_STORAGE_KEY)
-}
-
-/** 客户端请求协议版本，避免新旧页面连同一服务后状态不兼容。 */
-export const ONLINE_CLIENT_PROTOCOL_VERSION = ONLINE_PROTOCOL_VERSION
-
-/** 开局选项协议占位，服务端当前不允许玩家自带手牌。 */
-export type OnlineStartOptions = StartRoundOptions
-
-/**
- * 转换可为 null 的必填座位字段，null 语义保持不变。
- *
- * @param seat 原座位。
- * @param viewerSeat 当前玩家座位。
- * @returns 视角座位。
- */
-function remapNullableSeat(
-  seat: SeatId | null,
-  viewerSeat: SeatId,
-): SeatId | null {
-  return seat === null ? null : mapSeatForViewer(seat, viewerSeat)
-}
-
-/**
- * 转换可选座位字段，undefined 语义保持不变。
- *
- * @param seat 原座位。
- * @param viewerSeat 当前玩家座位。
- * @returns 视角座位。
- */
-function remapOptionalSeat(
-  seat: SeatId | undefined,
-  viewerSeat: SeatId,
-): SeatId | undefined {
-  return seat === undefined ? undefined : mapSeatForViewer(seat, viewerSeat)
-}
-
-/**
- * 把服务端 MatchState 转成当前玩家的牌桌视角。
- * 服务端已经裁剪对手手牌；这里进一步保证 UI 底部永远是自己的座位。
- *
- * @param state 服务端原始状态。
- * @param viewerSeat 当前玩家逻辑座位。
- * @returns 当前视角的状态快照。
- */
-export function createMatchStateForViewer(
-  state: MatchState,
-  viewerSeat: SeatId,
-): MatchState {
-  if (viewerSeat === 0) {
-    return structuredClone(state)
-  }
-
-  const nextState = structuredClone(state)
-  nextState.seatConfigs = nextState.seatConfigs
-    .map((seatConfig) => ({
-      ...seatConfig,
-      seat: mapSeatForViewer(seatConfig.seat, viewerSeat),
-    }))
-    .sort((left, right) => left.seat - right.seat)
-  nextState.lastRoundLastTrickWinner = remapNullableSeat(
-    nextState.lastRoundLastTrickWinner,
-    viewerSeat,
-  )
-
-  if (nextState.currentRound) {
-    const round = nextState.currentRound
-    /** 将一条已完成回合记录中的所有座位转换为当前玩家视角。 */
-    const remapTrick = (trick: TrickRecord): TrickRecord => ({
-      ...trick,
-      leader: mapSeatForViewer(trick.leader, viewerSeat),
-      winner: mapSeatForViewer(trick.winner, viewerSeat),
-      visibleWinningSeat: mapSeatForViewer(trick.visibleWinningSeat, viewerSeat),
-      rewardOwner: remapOptionalSeat(trick.rewardOwner, viewerSeat),
-      plays: trick.plays.map((play) => ({
-        ...play,
-        seat: mapSeatForViewer(play.seat, viewerSeat),
-      })),
-    })
-
-    round.seats = round.seats
-      .map((seatState) => ({
-        ...seatState,
-        seat: mapSeatForViewer(seatState.seat, viewerSeat),
-        config: {
-          ...seatState.config,
-          seat: mapSeatForViewer(seatState.config.seat, viewerSeat),
-        },
-        wonTricks: seatState.wonTricks.map(remapTrick),
-      }))
-      .sort((left, right) => left.seat - right.seat)
-    round.currentSeat = remapNullableSeat(round.currentSeat, viewerSeat)
-    round.firstLeader = mapSeatForViewer(round.firstLeader, viewerSeat)
-    round.lastTrickWinner = remapOptionalSeat(round.lastTrickWinner, viewerSeat)
-    round.ceremony = {
-      ...round.ceremony,
-      roller: mapSeatForViewer(round.ceremony.roller, viewerSeat),
-      firstLeader: mapSeatForViewer(round.ceremony.firstLeader, viewerSeat),
-      firstRoller: remapOptionalSeat(round.ceremony.firstRoller, viewerSeat),
-      secondRoller: remapOptionalSeat(round.ceremony.secondRoller, viewerSeat),
-    }
-    round.pendingDice = round.pendingDice
-      ? {
-          ...round.pendingDice,
-          seat: mapSeatForViewer(round.pendingDice.seat, viewerSeat),
-        }
-      : null
-
-    if (round.currentTrick) {
-      round.currentTrick = {
-        ...round.currentTrick,
-        leader: mapSeatForViewer(round.currentTrick.leader, viewerSeat),
-        currentWinningSeat: mapSeatForViewer(round.currentTrick.currentWinningSeat, viewerSeat),
-        responseSeat: remapNullableSeat(round.currentTrick.responseSeat, viewerSeat),
-        rewardOwner: remapOptionalSeat(round.currentTrick.rewardOwner, viewerSeat),
-        plays: round.currentTrick.plays.map((play) => ({
-          ...play,
-          seat: mapSeatForViewer(play.seat, viewerSeat),
-        })),
-      }
-    }
-
-    round.publicTrickLog = round.publicTrickLog.map(remapTrick)
-
-    if (round.rewardOutcome) {
-      round.rewardOutcome = {
-        ...round.rewardOutcome,
-        owner: mapSeatForViewer(round.rewardOutcome.owner, viewerSeat),
-        winner: mapSeatForViewer(round.rewardOutcome.winner, viewerSeat),
-      }
-    }
-
-    if (round.settlement) {
-      round.settlement = {
-        ...round.settlement,
-        collector: mapSeatForViewer(round.settlement.collector, viewerSeat),
-        rewardOwner: remapOptionalSeat(round.settlement.rewardOwner, viewerSeat),
-        rewardOutcome: round.settlement.rewardOutcome
-          ? {
-              ...round.settlement.rewardOutcome,
-              owner: mapSeatForViewer(round.settlement.rewardOutcome.owner, viewerSeat),
-              winner: mapSeatForViewer(round.settlement.rewardOutcome.winner, viewerSeat),
-            }
-          : undefined,
-        seats: round.settlement.seats.map((seatSettlement) => ({
-          ...seatSettlement,
-          seat: mapSeatForViewer(seatSettlement.seat, viewerSeat),
-        })),
-      }
-    }
-  }
-
-  /*
-   * 历史局同样属于当前玩家视角；否则第二局以后累计积分和复盘座位会回到服务端坐标。
-   * 这里用空 replayRounds 的临时 MatchState 复用同一套完整转换，避免遗漏深层座位字段。
-   */
-  nextState.replayRounds = state.replayRounds.map((replayRound) => {
-    const replayView = createMatchStateForViewer({
-      ...state,
-      currentRound: replayRound,
-      replayRounds: [],
-    }, viewerSeat)
-
-    if (!replayView.currentRound) {
-      throw new Error('联机历史局缺少牌局状态。')
-    }
-
-    return replayView.currentRound
-  })
-
-  return nextState
-}
-
-/**
- * 将界面动作座位还原为服务端逻辑座位。
- *
- * @param seat 当前玩家看到的界面座位。
- * @param viewerSeat 当前玩家逻辑座位。
- * @returns 服务端座位。
- */
-export function mapSeatFromViewer(seat: SeatId, viewerSeat: SeatId): SeatId {
-  return (((seat + viewerSeat) % 4) as SeatId)
-}

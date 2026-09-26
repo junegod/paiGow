@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { SeededRandom } from '@/rules-core/random'
 import type { SeatConfig } from '@/rules-core/types'
 import { jiAnDaSuoZiRuleSet } from '@/rules-variants/ji-an-da-suo-zi/ruleSet'
-import { createMatchStateForViewer } from '@/services/online/OnlineClient'
+import { createMatchStateForViewer } from '@/services/online/viewerState'
 
 const SEATS: SeatConfig[] = [
   { seat: 0, name: '零号', mode: 'human', color: '#1' },

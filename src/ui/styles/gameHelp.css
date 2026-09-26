@@ -1,0 +1,76 @@
+/* 帮助弹窗复用原有金框规则视觉，只在内部滚动，保留关闭入口。 */
+.game-help {
+  max-height: calc(min(76svh, 642px) - 100px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.game-help__current {
+  padding: 12px;
+  margin-bottom: 18px;
+  border: 1px solid rgba(255, 224, 112, 0.4);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.game-help__current > strong {
+  color: #ffe070;
+  font-size: 16px;
+}
+
+.game-help__examples {
+  display: grid;
+  gap: 8px;
+}
+
+.game-help__examples button {
+  display: grid;
+  gap: 4px;
+  min-height: 44px;
+  padding: 10px;
+  border: 1px solid #bfa558;
+  border-radius: 8px;
+  color: #fff9dc;
+  background: #462045;
+  text-align: left;
+}
+
+/* 完整规则与当前提示共用一个滚动容器，避免手机出现嵌套滚动。 */
+.game-help .rules-panel__content {
+  overflow: visible;
+}
+
+.game-help .rules-panel__head {
+  position: static;
+}
+
+.game-help .rules-panel__head h2 {
+  font-size: 22px;
+}
+
+.table-connection-notice {
+  position: absolute;
+  z-index: 6;
+  top: 58px;
+  left: 65px;
+  right: 65px;
+  margin: 0;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: #173e30;
+  color: #fff2c2;
+  font-size: 13px;
+  text-align: center;
+  pointer-events: none;
+}
+
+.settlement-save-error,
+.home-lobby__error {
+  padding: 10px;
+  border: 1px solid #ffc980;
+  border-radius: 8px;
+  color: #ffedc5;
+  background: #542c26;
+}

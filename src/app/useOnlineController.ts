@@ -1,19 +1,21 @@
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 
+import { OnlineClient, type OnlineClientStatus } from '@/services/online/OnlineClient'
+import { DEFAULT_BOT_NAMES, orderHandBySavedIds, createWebSocketUrl, readRoomSnapshot, type OnlineMode } from '@/app/onlineControllerSupport'
+import { createMatchStateForViewer } from '@/services/online/viewerState'
+import { useOnlineReadiness } from '@/app/useOnlineReadiness'
+
 import { arrangeJiAnDaSuoZiHandIds } from '@/rules-variants/ji-an-da-suo-zi/handArrangement'
 import { jiAnDaSuoZiRuleSet } from '@/rules-variants/ji-an-da-suo-zi/ruleSet'
 
 import {
   clearOnlineSession,
-  createMatchStateForViewer,
-  OnlineClient,
   readOnlineSession,
   saveOnlineSession,
-} from '@/services/online/OnlineClient'
+} from '@/services/online/onlineSession'
 import type {
-  OnlineClientStatus,
   OnlineSessionSnapshot,
-} from '@/services/online/OnlineClient'
+} from '@/services/online/onlineSession'
 import type {
   OnlinePlayer,
   OnlineRoomSummary,
@@ -21,97 +23,11 @@ import type {
   OnlineServerMessage,
 } from '@/services/online/types'
 import type {
-  CardInstance,
   MatchState,
   PreparedAction,
   RoundState,
   SeatId,
 } from '@/rules-core/types'
-
-/** 大厅等待开始时的机器人默认名字。 */
-const DEFAULT_BOT_NAMES = ['村里的阿明', '村里的老周', '村里的细妹']
-
-/**
- * 按本地保存的顺序展示某个座位的牌。
- * 顺序缺失时返回原始手牌；顺序里少了牌就追加，顺序里多了牌就过滤掉。
- *
- * @param savedOrder 本地保存的牌实例 ID 顺序。
- * @param hand 服务端手牌数组。
- * @returns 用于展示的牌数组。
- */
-function orderHandBySavedIds(
-  savedOrder: string[] | undefined,
-  hand: CardInstance[],
-): CardInstance[] {
-  if (!savedOrder) {
-    return hand
-  }
-
-  const currentIds = new Set(hand.map((card) => card.id))
-  const preserved = savedOrder.filter((cardId) => currentIds.has(cardId))
-  const preservedSet = new Set(preserved)
-  const appended = hand
-    .map((card) => card.id)
-    .filter((cardId) => !preservedSet.has(cardId))
-
-  return [...preserved, ...appended]
-    .map((cardId) => hand.find((card) => card.id === cardId))
-    .filter((card): card is CardInstance => Boolean(card))
-}
-
-/** 联机界面所处阶段。 */
-export type OnlineMode = 'offline' | 'browser' | 'lobby' | 'match'
-
-/**
- * 根据当前页面地址推导 WebSocket 地址，支持 Vite 代理和同域名部署。
- *
- * @returns 例如 wss://game9.qdkl.cn/ws。
- */
-function createWebSocketUrl(): string {
-  const configuredUrl = import.meta.env.VITE_ONLINE_WS_URL
-
-  if (typeof configuredUrl === 'string' && configuredUrl.trim()) {
-    return configuredUrl.trim()
-  }
-
-  if (location.protocol === 'capacitor:' || location.protocol === 'ionic:') {
-    return 'wss://game9.qdkl.cn/ws'
-  }
-
-  const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
-  return `${protocol}//${location.host}/ws`
-}
-
-/**
- * 从服务端消息提取完整房间和牌局快照。
- *
- * @param message 服务端消息。
- * @returns 能提取时返回快照，否则返回 null。
- */
-function readRoomSnapshot(message: OnlineServerMessage): {
-  room: OnlineRoomState
-  state: MatchState
-} | null {
-  if (
-    message.type === 'room-created' ||
-    message.type === 'room-joined' ||
-    message.type === 'room-resumed'
-  ) {
-    return {
-      room: message.room,
-      state: message.state,
-    }
-  }
-
-  if (message.type === 'room-state') {
-    return {
-      room: message.room,
-      state: message.state,
-    }
-  }
-
-  return null
-}
 
 /**
  * 联机控制器桥接 WebSocket 客户端和现有牌桌 UI。
@@ -120,9 +36,13 @@ function readRoomSnapshot(message: OnlineServerMessage): {
  * @returns 联机阶段状态和操作函数。
  */
 export function useOnlineController(fallbackPlayerName = '玩家') {
+  /** 只接收当前仍等待恢复的身份；主动离局后拒绝迟到的恢复快照。 */
+  const resumingTokenRef = useRef<string | null>(null)
   const latestRevisionRef = useRef(0)
   const activeRoomCodeRef = useRef<string | null>(null)
   const [client] = useState(() => new OnlineClient(createWebSocketUrl()))
+  const readiness = useOnlineReadiness(client)
+  const resetReadiness = readiness.reset
   const [mode, setMode] = useState<OnlineMode>('offline')
   const [roomList, setRoomList] = useState<OnlineRoomSummary[]>([])
   const [isRoomListLoading, setIsRoomListLoading] = useState(false)
@@ -229,6 +149,9 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
    * @param message 服务端消息。
    */
   const handleServerMessage = useEffectEvent((message: OnlineServerMessage) => {
+    if (message.type === 'room-resumed' && message.player.token !== resumingTokenRef.current) {
+      return
+    }
     const roomSnapshot = readRoomSnapshot(message)
 
     if (roomSnapshot) {
@@ -250,6 +173,7 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
       setSession(nextSession)
       saveOnlineSession(nextSession)
       setError(null)
+      readiness.finish()
       applyViewerState(message.state, message.player.seat)
       setMode(message.state.currentRound && message.room.isPlaying ? 'match' : 'lobby')
       return
@@ -257,6 +181,7 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
 
     if (message.type === 'match-state') {
       if (player && acceptServerRevision(message.roomCode, message.revision)) {
+        setError(null)
         applyViewerState(message.state, player.seat)
       }
       return
@@ -281,6 +206,7 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
       setError(message.message)
 
       if (message.code === 'seat-token-invalid' || message.code === 'protocol-mismatch') {
+        readiness.reset()
         clearOnlineSession()
         setSession(null)
         setPlayer(null)
@@ -304,7 +230,11 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
   const handleConnectionStatus = useEffectEvent((status: OnlineClientStatus) => {
     setConnectionStatus(status)
 
+    readiness.reset()
+    resumingTokenRef.current = null
     if (status === 'connected' && session) {
+      readiness.begin()
+      resumingTokenRef.current = session.playerToken
       client.resumeRoom(session)
     }
   })
@@ -317,6 +247,7 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
     return () => {
       unsubscribeMessage()
       unsubscribeStatus()
+      client.disconnect()
     }
   }, [client])
 
@@ -352,12 +283,14 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
   }, [client, mode])
 
   /**
-   * 移动端切后台后 WebSocket 可能被系统断开；回到页面时立即拉取最新状态。
+   * 移动端切后台后连接可能处于半开状态；回到页面时重新握手恢复身份与牌局。
    */
   useEffect(() => {
     function refreshAfterVisible(): void {
       if (document.visibilityState === 'visible' && player) {
-        client.refreshRoom(player.token)
+        // 前台恢复时重新握手并获取身份快照，不能仅向可能半开的旧连接发送查询。
+        resetReadiness()
+        client.reconnect()
       }
     }
 
@@ -366,7 +299,16 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
     return () => {
       document.removeEventListener('visibilitychange', refreshAfterVisible)
     }
-  }, [client, player])
+  }, [client, player, resetReadiness])
+
+  /** 恢复连接和房主变更只短暂提示，避免通知长时间占据牌桌。 */
+  useEffect(() => {
+    if (!notice) {
+      return
+    }
+    const timer = window.setTimeout(() => setNotice(null), 6_000)
+    return () => window.clearTimeout(timer)
+  }, [notice])
 
   /** 组件卸载或离开页面时清理理牌动画计时器，避免卸载后继续写 React 状态。 */
   useEffect(() => {
@@ -556,16 +498,24 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
     setError(null)
 
     if (player?.token) {
-      client.configureBots(player.token, botNames)
+      if (client.status !== 'connected' || !readiness.isReady) {
+        return
+      }
+      // 已开局后只请求下一局，不能再次发送仅大厅允许的改名请求。
+      if (!room?.isPlaying) {
+        client.configureBots(player.token, botNames)
+      }
       client.startMatch(player.token)
     }
-  }, [botNames, client, player])
+  }, [botNames, client, player, readiness.isReady, room?.isPlaying])
 
   /**
    * 主动离开联机房间。
    * 先通知服务端把座位交给机器人，再清掉本地会话和牌桌状态，确保能直接回到首页。
    */
   function leaveRoom(targetMode: OnlineMode = 'offline'): void {
+    resumingTokenRef.current = null
+    readiness.reset()
     if (player?.token) {
       client.leaveRoom(player.token)
     }
@@ -593,11 +543,11 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
     const currentSeat = matchState?.currentRound?.currentSeat
     const currentPhase = matchState?.currentRound?.phase
 
-    if (!player) {
+    if (!player || client.status !== 'connected' || !readiness.isReady) {
       return
     }
 
-    if (currentSeat === null || currentSeat === undefined) {
+    if (currentSeat !== 0) {
       return
     }
 
@@ -611,7 +561,7 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
       intent: action.intent,
       selectedCardIds: action.selectedCardIds,
     })
-  }, [client, matchState, player])
+  }, [client, matchState, player, readiness.isReady])
 
   /**
    * 派生成现有牌桌 UI 能直接使用的控制器形态。
@@ -693,6 +643,7 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
     roomList,
     isRoomListLoading,
     connectionStatus,
+    isSynchronized: readiness.isReady,
     session,
     player,
     room,

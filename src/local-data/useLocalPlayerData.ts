@@ -132,23 +132,35 @@ export function useLocalPlayerData() {
 
   /**
    * 结算后记录当前用户积分。服务层用局唯一键去重，重复调用不会重复加分。
+   *
+   * @param matchState 当前整场状态。
+   * @param round 已结算的单局。
+   * @returns 积分与战绩持久化完成后兑现。
+   * @throws 本机用户未就绪或数据库写入失败，调用方必须保留结算页并允许重试。
    */
   async function recordSettledRound(matchState: MatchState, round: RoundState): Promise<void> {
     const activeUserId = snapshot?.activeUserId
 
     if (!activeUserId) {
-      return
+      throw new Error('本机用户尚未加载，请稍后重试。')
     }
 
     try {
       applySnapshot(await recordSettledRoundForUser(activeUserId, matchState, round))
     } catch (error) {
       handleError(error)
+      // 离局与下一局必须以实际落账成功为前提，不能把失败伪装成完成。
+      throw error
     }
   }
 
   /**
    * 主动中途离局时立即扣分，避免用户反复重新开局刷好手牌。
+   *
+   * @param matchState 当前整场状态。
+   * @param round 即将放弃的单局。
+   * @returns 扣分流水持久化完成后兑现。
+   * @throws 用户未就绪或写入失败，调用方不得继续离局。
    */
   async function recordAbandonedRoundPenalty(
     matchState: MatchState,
@@ -157,13 +169,15 @@ export function useLocalPlayerData() {
     const activeUserId = snapshot?.activeUserId
 
     if (!activeUserId) {
-      return
+      throw new Error('本机用户尚未加载，请稍后重试。')
     }
 
     try {
       applySnapshot(await recordAbandonedRoundPenaltyForUser(activeUserId, matchState, round))
     } catch (error) {
       handleError(error)
+      // 离局与下一局必须以实际落账成功为前提，不能把失败伪装成完成。
+      throw error
     }
   }
 

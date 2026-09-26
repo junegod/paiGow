@@ -10,8 +10,11 @@ import {
 } from '@/rules-variants/ji-an-da-suo-zi/cardCatalog'
 import { PaiCard } from '@/ui/components/PaiCard'
 
+/** 共享规则页，首页与牌桌使用各自的返回入口。 */
 interface RulesPanelProps {
-  /** 返回首页选牌区，保留玩家已经勾选的调试手牌。 */
+  /** 返回按钮文案；局内使用“返回牌桌”。 */
+  backLabel?: string
+  /** 返回调用页面，保留首页已选牌或当前牌桌状态。 */
   onBack: () => void
 }
 
@@ -171,8 +174,10 @@ function DoorLine({
 /**
  * 打索子规则页。规则按玩家实际思考顺序组织：先认识牌，再看能出什么，
  * 然后理解吃牌、骰子、赏和结算。
+ * @param props 返回入口与调用页面对应的按钮文案。
+ * @returns 可滚动的规则说明与真实牌面示例。
  */
-export function RulesPanel({ onBack }: RulesPanelProps) {
+export function RulesPanel({ onBack, backLabel = '返回首页' }: RulesPanelProps) {
   return (
     <div className="rules-panel">
       <header className="rules-panel__head">
@@ -180,7 +185,7 @@ export function RulesPanel({ onBack }: RulesPanelProps) {
           <p>江西吉安新居村非物质文化遗产</p>
           <h2>打索子规则</h2>
         </div>
-        <button type="button" onClick={onBack}>返回首页</button>
+        <button type="button" onClick={onBack}>{backLabel}</button>
       </header>
 
       <div className="rules-panel__content">
