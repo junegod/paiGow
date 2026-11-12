@@ -1,0 +1,253 @@
+/*
+ * 三维牌桌：画布铺满整个牌桌区域，头像和操作栏叠在画布之上。
+ */
+.game-table--3d {
+  background: #0b0705;
+}
+
+/*
+ * 旧版绿绒桌面的装饰层在三维牌桌下不再需要。
+ */
+.game-table--3d::before,
+.game-table--3d::after {
+  display: none;
+}
+
+.table3d {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+
+.table3d__stage {
+  position: absolute;
+  inset: 0;
+}
+
+.table3d__stage canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+}
+
+/*
+ * 暗角只压四周亮度，把视线收到桌面中央，不拦截任何点击；底部只压提示条背后那一段，不能盖到手牌上。
+ */
+.table3d__vignette {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(180deg, rgba(8, 5, 3, 0) 88%, rgba(8, 5, 3, 0.9) 100%),
+    radial-gradient(ellipse 80% 62% at 50% 50%, rgba(0, 0, 0, 0) 55%, rgba(0, 0, 0, 0.6) 100%);
+}
+
+.table3d__unsupported {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  padding: 24px;
+  display: grid;
+  place-items: center;
+  color: #f3e9d2;
+  text-align: center;
+  line-height: 1.6;
+}
+
+/*
+ * 头像牌：三家对手由场景按座位投影定位，本方固定在手牌左上方。
+ */
+.table3d__seat {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 2;
+  min-width: 44px;
+  min-height: 44px;
+  border: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  color: #f3e9d2;
+  font-size: 0.72rem;
+  line-height: 1.2;
+  text-shadow: 0 1px 3px #000;
+  background: transparent;
+  will-change: transform;
+}
+
+.table3d__seat--self {
+  left: 8px;
+  top: auto;
+  bottom: calc(var(--table3d-hand-top, 260px) + 6px);
+  /*
+   * 本方头像改成横向的小条，紧贴手牌上沿，不遮挡左下角的骰碗。
+   */
+  flex-direction: row;
+  gap: 6px;
+}
+
+.table3d__seat--self .table3d__face {
+  width: 34px;
+  height: 34px;
+  font-size: 0.95rem;
+}
+
+.table3d__face {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  border: 2px solid rgba(240, 215, 160, 0.55);
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: #fff6e6;
+  font-size: 1.15rem;
+  font-weight: 800;
+  box-shadow:
+    inset 0 -10px 14px rgba(0, 0, 0, 0.42),
+    0 4px 10px rgba(0, 0, 0, 0.6);
+}
+
+.table3d__seat--active .table3d__face {
+  border-color: #ffd36b;
+  box-shadow:
+    inset 0 -10px 14px rgba(0, 0, 0, 0.42),
+    0 0 0 3px rgba(255, 211, 107, 0.38),
+    0 4px 10px rgba(0, 0, 0, 0.6);
+}
+
+.table3d__first {
+  position: absolute;
+  right: -8px;
+  top: -6px;
+  min-width: 18px;
+  border-radius: 6px;
+  padding: 1px 3px;
+  color: #fff4e0;
+  font-size: 0.62rem;
+  font-style: normal;
+  font-weight: 800;
+  text-shadow: none;
+  background: #b8322a;
+}
+
+/*
+ * 姓名和积分合并为一行，赢墩直接通过桌面牌堆查看，减少座位信息的重复展示。
+ */
+.table3d__meta {
+  border-radius: 9px;
+  padding: 1px 8px;
+  white-space: nowrap;
+  background: rgba(10, 6, 4, 0.74);
+}
+
+.table3d__meta b {
+  margin-left: 5px;
+  color: #ffd98a;
+  font-weight: 700;
+}
+
+/*
+ * 出牌按钮浮在三维手牌上方并水平居中，位置跟随场景回报的手牌顶边。
+ * 右侧是本方垒赢墩的位置，左侧是骰碗，按钮放中间才不会挡住它们。
+ */
+.game-table--3d .action-panel__actions {
+  right: auto;
+  left: 50%;
+  bottom: calc(var(--table3d-hand-top, 260px) + 12px);
+  transform: translateX(-50%);
+}
+
+/*
+ * 骰碗下方的文字：平时显示掷骰结果，轮到本方可以掷骰时变成醒目的提示。
+ */
+.table3d__bowl-label {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 2;
+  border-radius: 10px;
+  padding: 2px 9px;
+  color: #f3e9d2;
+  font-size: 0.72rem;
+  white-space: nowrap;
+  pointer-events: none;
+  background: rgba(10, 6, 4, 0.74);
+}
+
+.table3d__bowl-label--ready {
+  color: #2a1408;
+  font-weight: 800;
+  background: #ffd36b;
+  animation: table3d-bowl-pulse 1.1s ease-in-out infinite;
+}
+
+@keyframes table3d-bowl-pulse {
+  50% {
+    box-shadow: 0 0 0 7px rgba(255, 211, 107, 0);
+  }
+
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 211, 107, 0.55);
+  }
+}
+
+/*
+ * 开局仪式期间显示在牌桌上方的说明和跳过入口。
+ */
+.ceremony-bar {
+  position: absolute;
+  z-index: 6;
+  /*
+   * 左侧让出牌桌菜单按钮的位置。
+   */
+  left: 64px;
+  right: 12px;
+  top: calc(8px + env(safe-area-inset-top));
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  pointer-events: none;
+}
+
+.ceremony-bar__caption {
+  margin: 0;
+  border-radius: 14px;
+  padding: 8px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: #f3e9d2;
+  background: rgba(10, 6, 4, 0.78);
+}
+
+.ceremony-bar__caption strong {
+  font-size: 1rem;
+}
+
+.ceremony-bar__caption span {
+  color: #e0c48e;
+  font-size: 0.78rem;
+}
+
+.ceremony-bar__skip {
+  min-width: 64px;
+  min-height: 44px;
+  border: 1px solid rgba(232, 205, 150, 0.5);
+  border-radius: 22px;
+  padding: 0 16px;
+  color: #f3e9d2;
+  font-size: 0.86rem;
+  background: rgba(10, 6, 4, 0.78);
+  pointer-events: auto;
+}
+
+.ceremony-bar__skip:disabled {
+  opacity: 0.45;
+}

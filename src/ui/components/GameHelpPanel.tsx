@@ -4,25 +4,45 @@ import type { PreparedAction, RoundState, RuleSet, SeatId } from '@/rules-core/t
 import { InspectorDrawer } from '@/ui/components/InspectorDrawer'
 import { RulesPanel } from '@/ui/components/RulesPanel'
 
-/** 局内帮助只读取公开局面与自己的合法动作，不使用机器人策略或对手暗牌。 */
+/**
+ * 局内帮助只读取公开局面与自己的合法动作，不使用机器人策略或对手暗牌。
+ */
 interface GameHelpPanelProps {
-  /** 是否打开帮助弹窗。 */
+  /**
+   * 是否打开帮助弹窗。
+   */
   open: boolean
-  /** 当前局快照，联机时已经由服务端裁剪。 */
+  /**
+   * 当前局快照，联机时已经由服务端裁剪。
+   */
   round: RoundState
-  /** 复用当前玩法规则入口。 */
+  /**
+   * 复用当前玩法规则入口。
+   */
   ruleSet: RuleSet
-  /** 当前玩家自己的界面座位。 */
+  /**
+   * 当前玩家自己的界面座位。
+   */
   seat: SeatId
-  /** 当前选择的规则解释，包含不可出牌的原因。 */
+  /**
+   * 当前选择的规则解释，包含不可出牌的原因。
+   */
   hint: string
-  /** 是否可以操作；动画、断网或其他玩家回合时不推荐动作。 */
+  /**
+   * 是否可以操作；动画、断网或其他玩家回合时不推荐动作。
+   */
   canInteract: boolean
-  /** 仅不计分的定制练习局展示合法出法示例。 */
+  /**
+   * 仅不计分的定制练习局展示合法出法示例。
+   */
   practice: boolean
-  /** 仅选中手牌，仍需玩家自行确认实际出牌方式。 */
+  /**
+   * 仅选中手牌，仍需玩家自行确认实际出牌方式。
+   */
   onSelect: (cardIds: string[]) => void
-  /** 关闭弹窗回到原牌桌。 */
+  /**
+   * 关闭弹窗回到原牌桌。
+   */
   onClose: () => void
 }
 
@@ -62,7 +82,7 @@ export function GameHelpPanel({ open, round, ruleSet, seat, hint, canInteract, p
   }
 
   return (
-    <InspectorDrawer open={open} title="规则与提示" onClose={onClose}>
+    <InspectorDrawer open={open} title="规则与提示" onClose={onClose} className="game-help-dialog">
       <div className="game-help">
         <section className="game-help__current" aria-label="当前操作说明">
           <strong>{canInteract ? '轮到你了' : '当前牌局'}</strong>

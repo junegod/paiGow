@@ -1,7 +1,10 @@
 import {
+  lazy,
+  Suspense,
   useEffect,
   useMemo,
   useState,
+  type CSSProperties,
 } from 'react'
 
 import { useSettlementPersistence } from '@/app/useSettlementPersistence'
@@ -25,7 +28,6 @@ import { GameHelpPanel } from '@/ui/components/GameHelpPanel'
 import { TableMenu } from '@/ui/components/TableMenu'
 import { describeTurnSelection } from '@/ui/turnGuidance'
 import { ActionPanel } from '@/ui/components/ActionPanel'
-import { DiceBowlControl } from '@/ui/components/DiceBowlControl'
 import { InspectorDrawer } from '@/ui/components/InspectorDrawer'
 import {
   LeaveConfirmDialog,
@@ -33,16 +35,14 @@ import {
   type LeaveConfirmState,
 } from '@/ui/components/LeaveConfirmDialog'
 import { LobbyPanel } from '@/ui/components/LobbyPanel'
-import { OpeningCeremonyLayer } from '@/ui/components/OpeningCeremonyLayer'
 import { OnlineBrowserPanel } from '@/ui/components/OnlineBrowserPanel'
 import { OnlineRoomPanel } from '@/ui/components/OnlineRoomPanel'
-import { SeatPanel } from '@/ui/components/SeatPanel'
 import { PrivacyPanel } from '@/ui/components/PrivacyPanel'
 import { SettingsPanel } from '@/ui/components/SettingsPanel'
 import { SettlementPanel } from '@/ui/components/SettlementPanel'
-import { TrickArena } from '@/ui/components/TrickArena'
 import { createGameDrawerMeta, type DrawerState } from '@/ui/gameInspection'
 import { useAppGestureGuards } from '@/ui/hooks/useAppGestureGuards'
+import { useOpeningCeremony } from '@/ui/hooks/useOpeningCeremony'
 
 function getSeatConfig(seatConfigs: SeatConfig[], seat: SeatId): SeatConfig {
   const seatConfig = seatConfigs.find((item) => item.seat === seat)
@@ -103,6 +103,18 @@ function getTableDisplayScore(
 }
 
 /**
+ * 三维牌桌及其渲染库体积较大，进入牌桌时才加载，首页不用为它等待。
+ */
+const Table3D = lazy(() =>
+  import('@/ui/components/Table3D').then((module) => ({ default: module.Table3D })),
+)
+
+/**
+ * 三维牌桌底部为紧凑提示条留出 44 像素点击区及上下间距，手牌随预留高度下移。
+ */
+const TABLE_BOTTOM_INSET = 56
+
+/**
  * 将规则层门类转换成牌桌 HUD 上的短中文。
  */
 function formatDoorName(door: string): string {
@@ -132,16 +144,20 @@ function App() {
   const [drawerState, setDrawerState] = useState<DrawerState>(null)
   const [isHelpOpen, setIsHelpOpen] = useState(false)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
-  const [onlineRoomCode, setOnlineRoomCode] = useState('')
-  const [onlinePlayerName, setOnlinePlayerName] = useState('')
   const [browserPlayerName, setBrowserPlayerName] = useState('')
   const [isCurrentMatchScored, setIsCurrentMatchScored] = useState(true)
   const [leaveConfirmState, setLeaveConfirmState] = useState<LeaveConfirmState | null>(null)
   const [leaveConfirmError, setLeaveConfirmError] = useState<string | null>(null)
   const [isLeavePenaltySubmitting, setIsLeavePenaltySubmitting] = useState(false)
   const [lastVisibleDiceRoll, setLastVisibleDiceRoll] = useState<DiceRoll | null>(null)
+  /*
+   * 三维手牌顶边到牌桌底边的距离，由场景回报，用来把出牌按钮和本方头像摆在手牌上方。
+   */
+  const [handTopOffset, setHandTopOffset] = useState(260)
 
-  /** 本地用户加载完成后为联机大厅补上默认昵称，但不覆盖玩家已经输入的内容。 */
+  /**
+   * 本地用户加载完成后为联机大厅补上默认昵称，但不覆盖玩家已经输入的内容。
+   */
   useEffect(() => {
     const nickname = localPlayerData.snapshot?.activeUser?.nickname
 
@@ -188,7 +204,7 @@ function App() {
     : activeController.isDiceReviewing
       ? '骰子正在滚动并展示结果，稍等一下看清点数。'
     : rollActionForBowl
-      ? '点右上角的碗掷骰。'
+      ? '点桌上的骰碗掷骰。'
     : canUseActionPanel
       ? describeTurnSelection(currentRound, activeController.selectionPreview)
       : activeController.selectionPreview.hint
@@ -256,6 +272,44 @@ function App() {
       window.removeEventListener('beforeunload', handleBeforeUnload)
     }
   }, [shouldWarnBeforeLeavingScoredRound])
+
+  const openingCeremony = useOpeningCeremony(
+    activeController.openingCeremony?.round ?? null,
+    activeController.finishOpeningCeremony,
+  )
+  /*
+   * 定先手的点数只在开始掷骰后公开，并在抓牌、翻牌阶段继续留在碗里，避免阶段切换时骰子消失。
+   * 洗牌和垒牌期间不提前展示本局结果；正式牌局仍使用最近一次公开的掷骰结果。
+   * 用稳定的对象传给牌桌，避免每次渲染都被当成一次新的掷骰。
+   */
+  const ceremonyRoll = activeController.openingCeremony?.round.ceremony.roll ?? null
+  const hasCeremonyDiceResult = openingCeremony.isRollingDice ||
+    openingCeremony.stage?.phase === 'deal' || openingCeremony.stage?.phase === 'reveal'
+  const shownRoll = openingCeremony.stage
+    ? (hasCeremonyDiceResult ? ceremonyRoll : null)
+    : bowlDisplayRoll
+  const shownRollFirst = shownRoll?.first ?? null
+  const shownRollSecond = shownRoll?.second ?? null
+  const isDiceRolling = openingCeremony.stage ? openingCeremony.isRollingDice : activeController.isDiceReviewing
+  /*
+   * 开局仪式要用桌子中央洗牌垒墩，这期间骰碗放在桌边。
+   */
+  const isCeremonyRunning = openingCeremony.stage !== null
+  const tableDice = useMemo(
+    () => ({
+      values: shownRollFirst !== null && shownRollSecond !== null
+        ? ([shownRollFirst, shownRollSecond] as [number, number])
+        : null,
+      rolling: isDiceRolling,
+      aside: isCeremonyRunning,
+    }),
+    [isCeremonyRunning, isDiceRolling, shownRollFirst, shownRollSecond],
+  )
+  const bowlLabel = openingCeremony.stage
+    ? null
+    : rollActionForBowl && !isDiceRolling
+      ? '点碗掷骰'
+      : activeDiceResultLabel
 
   useAppGestureGuards()
   useGameAudio(currentRound, activeController.isOpeningCeremonyActive, audioPreferences)
@@ -529,37 +583,16 @@ function App() {
     return (
       <main className="app-shell">
         <LobbyPanel
-          onCreateRoom={(playerName) => {
-            setOnlinePlayerName(playerName)
-            online.createRoom(playerName)
-          }}
-          onJoinRoom={(roomCode, playerName) => {
-            setOnlineRoomCode(roomCode)
-            setOnlinePlayerName(playerName)
-            online.joinRoom(roomCode, playerName)
-          }}
-          onOpenBrowser={online.enterBrowser}
-          onlineConnectionStatus={online.mode === 'offline' ? online.connectionStatus : undefined}
-          onlineRoomCode={online.mode === 'offline' ? onlineRoomCode : undefined}
-          onlinePlayerName={online.mode === 'offline' ? onlinePlayerName : undefined}
-          onlineError={online.mode === 'offline' ? online.error : undefined}
           onStart={startScoredRound}
           onStartCustom={startCustomRound}
-          canConfigureSeats
+          onOpenBrowser={online.enterBrowser}
+          onOpenSettings={() => setIsSettingsOpen(true)}
           botDifficulty={botDifficulty}
           onBotDifficultyChange={localPlayerData.setBotDifficulty}
-          onOpenSettings={() => setIsSettingsOpen(true)}
           isBotDifficultyReady={localPlayerData.status === 'ready'}
-          localUserPanel={{
-            users: localPlayerData.snapshot?.users ?? [],
-            activeUser: localPlayerData.snapshot?.activeUser ?? null,
-            activeStats: activeLocalStats,
-            recentHistories: localPlayerData.snapshot?.recentHistories ?? [],
-            status: localPlayerData.status,
-            errorMessage: localPlayerData.errorMessage,
-            onCreateUser: localPlayerData.createUser,
-            onSwitchUser: localPlayerData.switchUser,
-          }}
+          activeUser={localPlayerData.snapshot?.activeUser ?? null}
+          activeScore={activeLocalScore ?? 0}
+          errorMessage={(online.mode === 'offline' ? online.error : null) ?? localPlayerData.errorMessage}
         />
         {settingsPanel}
       </main>
@@ -569,8 +602,8 @@ function App() {
   if (!currentMatchState) {
     return (
       <main className="app-shell">
-        <section className="lobby-panel">
-          <p className="lobby-panel__summary">正在同步牌局状态...</p>
+        <section className="lobby">
+          <p className="lobby__notice">正在同步牌局状态...</p>
         </section>
       </main>
     )
@@ -578,11 +611,41 @@ function App() {
 
   return (
     <main className="app-shell">
-      <section className={`game-table ${activeController.isOpeningCeremonyActive ? 'game-table--ceremony' : ''}`}>
-        <span className="table-corner table-corner--top-left" aria-hidden="true" />
-        <span className="table-corner table-corner--top-right" aria-hidden="true" />
-        <span className="table-corner table-corner--bottom-left" aria-hidden="true" />
-        <span className="table-corner table-corner--bottom-right" aria-hidden="true" />
+      <section
+        className="game-table game-table--3d"
+        style={{ '--table3d-hand-top': `${handTopOffset}px` } as CSSProperties}
+      >
+        <Suspense fallback={null}>
+        <Table3D
+          round={currentRound}
+          reviewTrick={activeController.reviewTrick}
+          handSeat={activeController.visibleActionSeatState?.seat ?? 0}
+          handCards={activeController.visibleActionHandCards}
+          selectedCardIds={actionPanelSelectedCardIds}
+          cardDefinitions={cardDefinitionMap}
+          ceremony={openingCeremony.stage}
+          dice={tableDice}
+          bowlLabel={bowlLabel}
+          canRollDice={Boolean(rollActionForBowl) && !isDiceRolling}
+          canInteract={canUseActionPanel}
+          currentSeat={activeController.currentSeat}
+          bottomInset={TABLE_BOTTOM_INSET}
+          getSeatScore={getVisibleSeatScore}
+          onCardToggle={toggleCardSelectionWithSound}
+          onHandReorder={activeController.reorderCurrentHand}
+          onInspectTrick={(trickIndex) => setDrawerState({ type: 'trick', trickIndex })}
+          onInspectSeat={(seat) => setDrawerState({ type: 'seat', seat })}
+          onHandTop={setHandTopOffset}
+          onRollDice={() => {
+            /*
+             * 只有规则层给出了掷骰动作、且不在掷骰展示期间，点碗才会真正掷骰。
+             */
+            if (rollActionForBowl && !isDiceRolling) {
+              activeController.submitPreparedAction(rollActionForBowl)
+            }
+          }}
+        />
+        </Suspense>
 
         {online.mode === 'match' && online.room ? (
           <div className="online-table-status" aria-live="polite">
@@ -607,67 +670,9 @@ function App() {
           canRestart={online.mode !== 'match' || (online.isHost && online.isSynchronized && currentRound.phase === 'settled')}
         />
 
-        <DiceBowlControl
-          roll={bowlDisplayRoll}
-          rolling={activeController.isDiceReviewing}
-          rollAction={rollActionForBowl}
-          resultLabel={activeDiceResultLabel}
-          onRoll={activeController.submitPreparedAction}
-        />
-
-        <section className="table-surface">
-          <div className="table-surface__north">
-            <SeatPanel
-              seatState={currentRound.seats[2]}
-              isCurrent={activeController.currentSeat === 2}
-              isDealer={currentRound.firstLeader === 2}
-              score={getVisibleSeatScore(2)}
-              onInspectWonTricks={() => setDrawerState({ type: 'seat', seat: 2 })}
-            />
-          </div>
-          <div className="table-surface__west">
-            <SeatPanel
-              seatState={currentRound.seats[3]}
-              isCurrent={activeController.currentSeat === 3}
-              isDealer={currentRound.firstLeader === 3}
-              score={getVisibleSeatScore(3)}
-              onInspectWonTricks={() => setDrawerState({ type: 'seat', seat: 3 })}
-            />
-          </div>
-          <div className="table-surface__center">
-            <TrickArena
-              round={currentRound}
-              reviewTrick={activeController.reviewTrick}
-              seatConfigs={displaySeatConfigs}
-              cardDefinitions={cardDefinitionMap}
-              onInspectTrick={(trickIndex) => setDrawerState({ type: 'trick', trickIndex })}
-            />
-          </div>
-          <div className="table-surface__east">
-            <SeatPanel
-              seatState={currentRound.seats[1]}
-              isCurrent={activeController.currentSeat === 1}
-              isDealer={currentRound.firstLeader === 1}
-              score={getVisibleSeatScore(1)}
-              onInspectWonTricks={() => setDrawerState({ type: 'seat', seat: 1 })}
-            />
-          </div>
-          <div className="table-surface__south">
-            <SeatPanel
-              seatState={currentRound.seats[0]}
-              isCurrent={activeController.currentSeat === 0}
-              isDealer={currentRound.firstLeader === 0}
-              score={getVisibleSeatScore(0)}
-              onInspectWonTricks={() => setDrawerState({ type: 'seat', seat: 0 })}
-            />
-          </div>
-        </section>
-
         <ActionPanel
           seatState={activeController.visibleActionSeatState}
-          cardDefinitions={cardDefinitionMap}
-          selectedCardIds={actionPanelSelectedCardIds}
-          handCards={activeController.visibleActionHandCards}
+          handCount={activeController.visibleActionHandCards.length}
           hint={actionPanelHint}
           onHelp={() => setIsHelpOpen(true)}
           roundNumber={currentRound.roundNumber}
@@ -675,19 +680,25 @@ function App() {
           canInteract={canUseActionPanel}
           isOrganizingHand={activeController.isHandOrganizing}
           useBowlForRoll={Boolean(rollActionForBowl)}
-          onCardToggle={toggleCardSelectionWithSound}
-          onHandReorder={activeController.reorderCurrentHand}
           onOrganizeHand={activeController.organizeHumanHand}
           onActionSubmit={activeController.submitPreparedAction}
         />
 
-        {activeController.openingCeremony ? (
-          <OpeningCeremonyLayer
-            round={activeController.openingCeremony.round}
-            seatConfigs={displaySeatConfigs}
-            cardDefinitions={cardDefinitionMap}
-            onDone={activeController.finishOpeningCeremony}
-          />
+        {openingCeremony.caption ? (
+          <div className="ceremony-bar">
+            <p className="ceremony-bar__caption" aria-live="polite">
+              <strong>{openingCeremony.caption.title}</strong>
+              {openingCeremony.caption.detail ? <span>{openingCeremony.caption.detail}</span> : null}
+            </p>
+            <button
+              type="button"
+              className="ceremony-bar__skip"
+              disabled={!openingCeremony.canSkip}
+              onClick={openingCeremony.skip}
+            >
+              跳过
+            </button>
+          </div>
         ) : null}
 
         <LeaveConfirmDialog

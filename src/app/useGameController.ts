@@ -30,11 +30,17 @@ const HAND_AUTO_ORGANIZE_DELAY_MS = 220
 const HAND_ORGANIZE_ANIMATION_MS = 720
 
 interface OpeningCeremonyState {
-  /** 当前仪式对应的局号，用来让动画组件在每一局重新播放。 */
+  /**
+   * 当前仪式对应的局号，用来让动画组件在每一局重新播放。
+   */
   roundNumber: number
-  /** 庄家就是本局先抓牌的人，也就是规则层的 firstLeader。 */
+  /**
+   * 庄家就是本局先抓牌的人，也就是规则层的 firstLeader。
+   */
   dealerSeat: SeatId
-  /** 动画使用的规则快照，避免播放过程中 React 状态变化导致仪式画面跳动。 */
+  /**
+   * 动画使用的规则快照，避免播放过程中 React 状态变化导致仪式画面跳动。
+   */
   round: RoundState
 }
 
@@ -595,7 +601,9 @@ export function useGameController(botDifficulty: BotDifficulty, skipOpeningCerem
   }
 
   /**
-   * 重新开一场牌局，沿用当前座位配置。
+   * 返回新一桌的大厅状态，由单机服务重新抽取三位村里牌友的称呼。
+   *
+   * @returns 无返回值。
    */
   function restartMatch(): void {
     clearHandOrganizeTimers()

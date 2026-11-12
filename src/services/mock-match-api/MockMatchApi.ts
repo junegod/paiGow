@@ -9,10 +9,7 @@ import type {
   StartRoundOptions,
   TurnAction,
 } from '@/rules-core/types'
-import {
-  DEFAULT_SEAT_CONFIGS,
-  getCardDefinition,
-} from '@/rules-variants/ji-an-da-suo-zi/cardCatalog'
+import { getCardDefinition } from '@/rules-variants/ji-an-da-suo-zi/cardCatalog'
 import {
   getSeatState,
   RULE_ENGINE_REVISION,
@@ -20,6 +17,7 @@ import {
 import { createBotDecisionContext } from '@/rules-variants/ji-an-da-suo-zi/botObservation'
 import { getHeuristicBotStrategy } from '@/rules-variants/ji-an-da-suo-zi/botStrategy'
 import { jiAnDaSuoZiRuleSet } from '@/rules-variants/ji-an-da-suo-zi/ruleSet'
+import { createVillageSeatConfigs } from '@/services/mock-match-api/villageSeats'
 
 /**
  * 当前项目先用纯前端 mock 服务承载状态，后续替换真实后端时可保留同名接口。
@@ -36,7 +34,9 @@ export class MockMatchApi {
 
   private shouldUseRuntimeEntropy: boolean
 
-  /** 当前机器人决策使用的难度，默认保持标准增强策略。 */
+  /**
+   * 当前机器人决策使用的难度，默认保持标准增强策略。
+   */
   private botDifficulty: BotDifficulty
 
   /**
@@ -50,7 +50,7 @@ export class MockMatchApi {
     this.botDifficulty = botDifficulty
     const initialSeed = seed ?? createRuntimeSeed()
     this.rng = new SeededRandom(initialSeed)
-    this.state = jiAnDaSuoZiRuleSet.createMatch(initialSeed, DEFAULT_SEAT_CONFIGS)
+    this.state = jiAnDaSuoZiRuleSet.createMatch(initialSeed, createVillageSeatConfigs(initialSeed))
   }
 
   /**
@@ -79,13 +79,16 @@ export class MockMatchApi {
   }
 
   /**
-   * 重建整场对局。
+   * 重建整场单机对局，并重新随机分配三位村里牌友的称呼。
+   *
+   * @param seed 可选固定种子；省略时生成新种子，固定种子仍保持可复现。
+   * @returns 包含新牌友名称的大厅状态快照。
    */
   public createMatch(seed?: number): MatchState {
     this.shouldUseRuntimeEntropy = seed === undefined
     const nextSeed = seed ?? createRuntimeSeed()
     this.rng = new SeededRandom(nextSeed)
-    this.state = jiAnDaSuoZiRuleSet.createMatch(nextSeed, DEFAULT_SEAT_CONFIGS)
+    this.state = jiAnDaSuoZiRuleSet.createMatch(nextSeed, createVillageSeatConfigs(nextSeed))
     return this.getState()
   }
 
