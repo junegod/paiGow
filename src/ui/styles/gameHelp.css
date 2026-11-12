@@ -1,22 +1,88 @@
-/* 帮助弹窗复用原有金框规则视觉，只在内部滚动，保留关闭入口。 */
-.game-help {
-  max-height: calc(min(76svh, 642px) - 100px);
+/*
+ * 规则窗复用通用弹窗结构，局部改为一层暖纸色面板，移除黄框、紫底和内描边。
+ */
+.game-help-dialog .drawer__panel {
+  width: min(calc(100vw - 32px), 460px);
+  max-height: min(84svh, 720px);
+  border: 0;
+  border-radius: 12px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  color: #352c21;
+  background: #e9dfcb;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.4);
+}
+
+.game-help-dialog .drawer__panel::before {
+  content: none;
+}
+
+.game-help-dialog .drawer__header {
+  flex: 0 0 auto;
+  align-items: center;
+  margin: 0;
+  padding: 10px 12px 10px 18px;
+  border-bottom: 1px solid #d2c4aa;
+}
+
+.game-help-dialog .drawer__header h3 {
+  color: #352c21;
+  text-shadow: none;
+}
+
+/*
+ * 关闭入口放在标题栏内，保留 44 像素触控区域，不再使用悬在外框上的金色圆钮。
+ */
+.game-help-dialog .drawer__close {
+  position: static;
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 6px;
+  color: #66553f;
+  background: transparent;
+  box-shadow: none;
+}
+
+.game-help-dialog .drawer__close:hover {
+  background: rgba(102, 85, 63, 0.08);
+}
+
+.game-help-dialog .drawer__close:focus-visible {
+  outline: 2px solid #ad3c31;
+  outline-offset: -3px;
+}
+
+/*
+ * 只有弹窗正文滚动，标题和关闭按钮保持可见；规则组件内部不再嵌套滚动。
+ */
+.game-help-dialog .drawer__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+  padding: 0 18px 18px;
   overflow-y: auto;
   overscroll-behavior: contain;
+}
+
+.game-help {
   font-size: 14px;
   line-height: 1.6;
 }
 
 .game-help__current {
-  padding: 12px;
-  margin-bottom: 18px;
-  border: 1px solid rgba(255, 224, 112, 0.4);
-  border-radius: 10px;
-  background: rgba(0, 0, 0, 0.2);
+  padding: 14px 0;
+  margin-bottom: 0;
+  border: 0;
+  border-bottom: 1px solid #d2c4aa;
+  color: #66553f;
+  background: transparent;
 }
 
 .game-help__current > strong {
-  color: #ffe070;
+  color: #514026;
   font-size: 16px;
 }
 
@@ -30,24 +96,22 @@
   gap: 4px;
   min-height: 44px;
   padding: 10px;
-  border: 1px solid #bfa558;
-  border-radius: 8px;
-  color: #fff9dc;
-  background: #462045;
+  border: 0;
+  border-radius: 6px;
+  color: #514026;
+  background: #e1d4ba;
   text-align: left;
 }
 
-/* 完整规则与当前提示共用一个滚动容器，避免手机出现嵌套滚动。 */
+/*
+ * 完整规则和当前提示共用正文滚动区，嵌入时隐藏重复标题及返回按钮。
+ */
 .game-help .rules-panel__content {
   overflow: visible;
 }
 
 .game-help .rules-panel__head {
-  position: static;
-}
-
-.game-help .rules-panel__head h2 {
-  font-size: 22px;
+  display: none;
 }
 
 .table-connection-notice {
@@ -66,8 +130,7 @@
   pointer-events: none;
 }
 
-.settlement-save-error,
-.home-lobby__error {
+.settlement-save-error {
   padding: 10px;
   border: 1px solid #ffc980;
   border-radius: 8px;

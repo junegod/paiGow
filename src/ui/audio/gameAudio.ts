@@ -1,11 +1,16 @@
 import type { AudioPreferences } from '@/local-data/types'
 import type { SeatId } from '@/rules-core/types'
 
+/**
+ * 应用统一管理的交互音效类型，垒牌与整摞落桌使用独立的音量和音色配置。
+ */
 export type GameSoundName =
   | 'cardSelect'
   | 'cardPlay'
   | 'cardDiscard'
   | 'cardShuffle'
+  | 'cardStack'
+  | 'pileDrop'
   | 'diceRoll'
   | 'trickWin'
   | 'settlement'
@@ -23,14 +28,27 @@ export type VoiceCallName =
   | 'catch6'
   | 'catch7'
 
+/**
+ * 单种音效的素材地址、基础音量和可选变速配置。
+ */
 type GameSoundConfig = {
-  /** 浏览器 public 目录下的音频地址，后期替换素材时保持文件名即可。 */
+  /**
+   * 浏览器 public 目录下的音频地址，后期替换素材时保持文件名即可。
+   */
   src: string
-  /** 单个素材的基础音量，最终还会乘以玩家设置的总音量。 */
+  /**
+   * 单个素材的基础音量，最终还会乘以玩家设置的总音量。
+   */
   volume: number
+  /**
+   * 可选的播放速度；同一碰牌素材略作变速，区分轻脆叠牌和较沉的整摞落桌。
+   */
+  playbackRate?: number
 }
 
-/** 默认声音设置同时供本地数据加载前的首屏和旧数据迁移使用。 */
+/**
+ * 默认声音设置同时供本地数据加载前的首屏和旧数据迁移使用。
+ */
 export const DEFAULT_GAME_AUDIO_PREFERENCES: AudioPreferences = {
   soundEffectsEnabled: true,
   soundEffectsVolume: 0.86,
@@ -43,6 +61,9 @@ const GAME_SOUND_CONFIGS: Record<GameSoundName, GameSoundConfig> = {
   cardPlay: { src: '/sounds/card-play.ogg', volume: 0.92 },
   cardDiscard: { src: '/sounds/card-discard.ogg', volume: 0.68 },
   cardShuffle: { src: '/sounds/card-shuffle.ogg', volume: 0.7 },
+  // 复用已有授权碰牌素材，连续叠牌轻一些，最后整摞落桌稍沉，避免抢过人物喊声。
+  cardStack: { src: '/sounds/card-play.ogg', volume: 0.55, playbackRate: 1.16 },
+  pileDrop: { src: '/sounds/card-play.ogg', volume: 0.7, playbackRate: 0.94 },
   diceRoll: { src: '/sounds/dice-roll.ogg', volume: 0.88 },
   trickWin: { src: '/sounds/trick-win.ogg', volume: 0.84 },
   settlement: { src: '/sounds/settlement.ogg', volume: 0.9 },
@@ -171,14 +192,15 @@ export function unlockGameAudio(): void {
  * @param soundName 当前播放的音效类型。
  */
 function playTransientAccent(soundName: GameSoundName): void {
-  if (!audioContext || !['cardSelect', 'cardPlay', 'cardDiscard', 'trickWin'].includes(soundName)) {
+  if (!audioContext || !['cardSelect', 'cardPlay', 'cardDiscard', 'cardStack', 'pileDrop', 'trickWin'].includes(soundName)) {
     return
   }
 
   const now = audioContext.currentTime
   const oscillator = audioContext.createOscillator()
   const gain = audioContext.createGain()
-  const isHeavyImpact = soundName === 'cardPlay' || soundName === 'trickWin'
+  // 逐次叠牌使用短促轻响，整摞落桌才补低频冲击，保持两种动作的轻重区别。
+  const isHeavyImpact = soundName === 'cardPlay' || soundName === 'trickWin' || soundName === 'pileDrop'
 
   oscillator.type = 'triangle'
   oscillator.frequency.setValueAtTime(isHeavyImpact ? 185 : 420, now)
@@ -202,7 +224,11 @@ function playTransientAccent(soundName: GameSoundName): void {
  * @param soundName 需要播放的游戏音效。
  */
 export function playGameSound(soundName: GameSoundName): void {
-  if (!canUseBrowserAudio() || !isAudioUnlocked || !currentPreferences.soundEffectsEnabled) {
+  // 音量为零直接静音，既不创建播放器，也避免瞬态增强把零增益传入指数音量包络。
+  if (
+    !canUseBrowserAudio() || !isAudioUnlocked ||
+    !currentPreferences.soundEffectsEnabled || currentPreferences.soundEffectsVolume <= 0
+  ) {
     return
   }
 
@@ -213,11 +239,12 @@ export function playGameSound(soundName: GameSoundName): void {
   const audio = clonedAudio instanceof HTMLAudioElement ? clonedAudio : new Audio(config.src)
 
   audio.volume = clampVolume(config.volume * currentPreferences.soundEffectsVolume)
+  audio.playbackRate = config.playbackRate ?? 1
   audio.currentTime = 0
   playTransientAccent(soundName)
 
   void audio.play().catch(() => {
-    /** 音效是增强体验，标签页静音或系统拒绝播放时不能阻塞牌局。 */
+    // 音效是增强体验，标签页静音或系统拒绝播放时不能阻塞牌局。
   })
 }
 
@@ -246,7 +273,9 @@ export function playSeatVoice(seat: SeatId, callName: VoiceCallName, delayMs = 0
     audio.currentTime = 0
 
     void audio.play().catch(() => {
-      /** 人物喊声加载失败时保留落牌音效，不能影响规则状态推进。 */
+      /**
+       * 人物喊声加载失败时保留落牌音效，不能影响规则状态推进。
+       */
     })
   }, Math.max(0, delayMs))
 }

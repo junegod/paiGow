@@ -1,4 +1,7 @@
-/* 底部操作区：最下方只做通栏提示，出牌按钮浮在手牌上方。 */
+/*
+ * 紧凑提示条只承载当前状态和文字工具入口，出牌操作继续浮在手牌上方。
+ * 去掉原来的金框、渐变与圆形工具钮，把视觉重心留给牌面。
+ */
 .action-panel {
   position: absolute;
   z-index: 5;
@@ -9,166 +12,93 @@
   pointer-events: none;
 }
 
-.action-panel::before {
-  content: '';
-  position: absolute;
-  left: 4px;
-  right: 4px;
-  bottom: 74px;
-  height: 104px;
-  border-radius: 48% 48% 0 0 / 30% 30% 0 0;
-  background:
-    radial-gradient(ellipse at 50% 0%, rgba(255, 255, 255, 0.06), transparent 58%),
-    radial-gradient(ellipse at 50% 88%, rgba(255, 204, 88, 0.09), transparent 34%),
-    linear-gradient(180deg, rgba(8, 75, 45, 0.02), rgba(0, 26, 18, 0.54) 74%, rgba(0, 0, 0, 0.76));
-  box-shadow:
-    inset 0 2px 0 rgba(255, 204, 96, 0.32),
-    inset 0 -12px 18px rgba(0, 0, 0, 0.24),
-    0 -8px 18px rgba(0, 0, 0, 0.18);
-}
-
-.action-panel::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 82px;
-  height: 7px;
-  background:
-    linear-gradient(90deg, transparent 0%, rgba(255, 207, 90, 0.52) 14%, rgba(120, 26, 24, 0.72) 50%, rgba(255, 207, 90, 0.52) 86%, transparent 100%);
-  filter: blur(0.2px);
-}
-
 .action-panel__header {
   position: absolute;
-  left: 8px;
-  right: 8px;
-  bottom: 7px;
-  min-height: 74px;
-  padding: 6px 10px;
-  border: 1px solid rgba(255, 220, 111, 0.26);
-  border-radius: 19px;
+  left: 12px;
+  right: 12px;
+  bottom: 6px;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  color: #fff4bf;
-  background:
-    linear-gradient(90deg, rgba(255, 224, 104, 0.09), transparent 20%, transparent 80%, rgba(255, 224, 104, 0.07)),
-    radial-gradient(circle at 16% 0%, rgba(255, 255, 255, 0.12), transparent 42%),
-    linear-gradient(180deg, rgba(5, 58, 42, 0.92), rgba(2, 22, 19, 0.98));
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.14),
-    inset 0 -4px 0 rgba(0, 0, 0, 0.16),
-    0 7px 13px rgba(0, 0, 0, 0.34);
+  gap: 6px;
+  color: #c7bead;
+  background: transparent;
+  box-shadow: none;
   pointer-events: auto;
 }
 
-.action-panel__header > div {
-  flex-direction: column;
+/*
+ * 长提示最多显示两行，保持栏高稳定；完整内容保留在悬停说明及局内规则面板。
+ * 不再重复展示“轮到你了”标题，当前操作位仍由头像高亮与读屏区域名称标识。
+ */
+.action-panel__hint {
   flex: 1;
-  width: auto;
-  display: flex;
-  align-items: center;
-  gap: 3px;
   min-width: 0;
-}
-
-.action-panel__seat,
-.action-panel__hint {
   margin: 0;
-  font-size: 0.82rem;
-  font-weight: 900;
-}
-
-.action-panel__seat {
-  flex: 0 0 auto;
-  color: #fff5bd;
-}
-
-.action-panel__hint {
-  flex: 1;
-  color: #fff8de;
-  white-space: normal;
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
   overflow: hidden;
+  color: #c7bead;
+  font-size: 0.75rem;
+  font-weight: 400;
   line-height: 1.4;
-}
-
-.action-panel__header--waiting {
-  justify-content: space-between;
-}
-
-.action-panel__header--waiting .action-panel__hint--waiting {
-  flex: 1;
-  color: rgba(255, 255, 255, 0.76);
-  white-space: normal;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  overflow: hidden;
-  line-height: 1.4;
+  text-align: left;
 }
 
 .action-panel__round {
   flex: 0 0 auto;
-  margin-left: auto;
-  border: 1px solid rgba(255, 225, 117, 0.22);
-  border-radius: 999px;
-  padding: 3px 7px;
-  color: rgba(255, 239, 170, 0.9);
-  font-size: 0.6rem;
-  font-weight: 1000;
-  line-height: 1;
+  margin-left: 2px;
+  color: #a99d89;
+  font-size: 0.64rem;
+  font-weight: 400;
   white-space: nowrap;
-  background: rgba(0, 35, 24, 0.42);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.1),
-    0 4px 8px rgba(0, 0, 0, 0.18);
 }
 
+/*
+ * 文字按钮保留 44 像素触控面积；减少装饰，不缩小手机上的有效点击范围。
+ */
 .action-panel__organize,
 .action-panel__help {
   min-width: 44px;
   min-height: 44px;
   flex: 0 0 auto;
-  border: 1px solid rgba(255, 225, 117, 0.34);
-  border-radius: 999px;
-  padding: 4px 9px;
-  color: #ffe077;
-  font-size: 0.78rem;
-  font-weight: 1000;
+  border: 0;
+  border-radius: 4px;
+  padding: 0 4px;
+  color: #c7bead;
+  font-size: 0.75rem;
+  font-weight: 500;
   line-height: 1;
   white-space: nowrap;
-  background:
-    radial-gradient(circle at 30% 0%, rgba(255, 255, 255, 0.16), transparent 42%),
-    rgba(0, 35, 24, 0.5);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.12),
-    0 4px 8px rgba(0, 0, 0, 0.2);
+  background: transparent;
+  box-shadow: none;
+  transition: color 140ms ease, background 140ms ease;
 }
 
-.action-panel__organize:active {
-  transform: translateY(1px);
+.action-panel__organize:hover,
+.action-panel__help:hover {
+  color: #f3e9d2;
+  background: rgba(233, 223, 203, 0.08);
+}
+
+.action-panel__organize:focus-visible,
+.action-panel__help:focus-visible {
+  outline: 1px solid #c7bead;
+  outline-offset: -3px;
+}
+
+.action-panel__organize:active,
+.action-panel__help:active {
+  background: rgba(233, 223, 203, 0.12);
 }
 
 .action-panel__organize:disabled {
   cursor: default;
-  opacity: 0.66;
-}
-
-.action-panel > .card-strip {
-  position: absolute;
-  left: 2px;
-  right: 2px;
-  bottom: 90px;
-  z-index: 1;
-  max-width: calc(100% - 4px);
-  overflow: visible;
-  pointer-events: auto;
-  filter: drop-shadow(0 13px 12px rgba(0, 0, 0, 0.3));
+  opacity: 0.5;
 }
 
 .action-panel__actions {
@@ -233,7 +163,9 @@
   display: none;
 }
 
-/* 短屏也保留足够的点击高度，不能以压缩按钮换取布局空间。 */
+/*
+ * 短屏也保留足够的点击高度，不能以压缩按钮换取布局空间。
+ */
 @media (max-height: 720px) {
   .action-panel__actions {
     right: 10px;

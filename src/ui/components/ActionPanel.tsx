@@ -1,36 +1,49 @@
-import type { CardDefinition, CardInstance, PreparedAction, SeatState } from '@/rules-core/types'
+import type { PreparedAction, SeatState } from '@/rules-core/types'
 
-import { CardStrip } from '@/ui/components/CardStrip'
-
-/** 底部手牌、规则提示与玩家操作。 */
+/**
+ * 底部规则提示与玩家操作。手牌本身由三维牌桌渲染，这里不再绘制。
+ */
 interface ActionPanelProps {
-  /** 在牌桌内查看完整提示与规则。 */
+  /**
+   * 在牌桌内查看完整提示与规则。
+   */
   onHelp: () => void
   seatState: SeatState | null
-  cardDefinitions: Record<string, CardDefinition>
-  selectedCardIds: string[]
-  handCards: CardInstance[]
+  /**
+   * 当前可见手牌张数，只用于判断是否值得提供整理入口。
+   */
+  handCount: number
   hint: string
-  /** 当前局数，展示在底部提示条最右侧，避免占用牌桌顶部空间。 */
+  /**
+   * 当前局数，展示在底部提示条最右侧，避免占用牌桌顶部空间。
+   */
   roundNumber?: number
   preparedActions: PreparedAction[]
   canInteract: boolean
-  /** 是否正在播放自动理牌动画，用于按钮禁用和手牌高亮。 */
+  /**
+   * 是否正在播放自动理牌动画，用于按钮禁用和手牌高亮。
+   */
   isOrganizingHand?: boolean
   useBowlForRoll?: boolean
-  onCardToggle: (cardId: string) => void
-  onHandReorder: (cardIds: string[]) => void
-  /** 手动整理当前真人手牌，只调整本地 UI 顺序。 */
+  /**
+   * 手动整理当前真人手牌，只调整本地 UI 顺序。
+   */
   onOrganizeHand?: () => void
   onActionSubmit: (action: PreparedAction) => void
 }
 
 interface VisibleActionButton {
-  /** 实际提交给规则引擎的原始动作。 */
+  /**
+   * 实际提交给规则引擎的原始动作。
+   */
   action: PreparedAction
-  /** 展示给玩家看的短文字，普通动作统一叫“出牌”。 */
+  /**
+   * 展示给玩家看的短文字，普通动作统一叫“出牌”。
+   */
   label: string
-  /** 额外视觉角色，用于把吃牌按钮做得更醒目。 */
+  /**
+   * 额外视觉角色，用于把吃牌按钮做得更醒目。
+   */
   role: 'eat' | 'discard' | 'normal'
 }
 
@@ -133,30 +146,27 @@ function createVisibleActionButtons(
 }
 
 /**
- * 底部操作区展示当前可见手牌。轮到机器人或其他座位时仍保留底部玩家手牌，
- * 但关闭点选、拖动和出牌按钮，避免操作态与展示态混在一起。
- * @param props 自己的手牌、规则提示与允许执行的交互。
- * @returns 底部手牌与操作区，提供局内规则查看入口。
+ * 底部只保留低调的当前提示和文字工具入口，出牌按钮仍由上方独立区域承载。
+ * 轮到机器人或其他座位时禁用提交，详细提示可通过规则入口查看。
+ *
+ * @param props 规则提示与允许执行的交互。
+ * @returns 底部提示与操作区，提供局内规则查看入口。
  */
 export function ActionPanel({
   seatState,
   onHelp,
-  cardDefinitions,
-  selectedCardIds,
-  handCards,
+  handCount,
   hint,
   roundNumber,
   preparedActions,
   canInteract,
   isOrganizingHand = false,
   useBowlForRoll = false,
-  onCardToggle,
-  onHandReorder,
   onOrganizeHand,
   onActionSubmit,
 }: ActionPanelProps) {
   const visibleActionButtons = createVisibleActionButtons(preparedActions, useBowlForRoll)
-  const canOrganizeHand = Boolean(onOrganizeHand) && handCards.length > 1
+  const canOrganizeHand = Boolean(onOrganizeHand) && handCount > 1
   const roundBadge = roundNumber ? (
     <span className="action-panel__round">第{roundNumber}局</span>
   ) : null
@@ -164,8 +174,8 @@ export function ActionPanel({
   if (!seatState) {
     return (
       <section className="action-panel">
-        <div className="action-panel__header action-panel__header--waiting">
-          <p className="action-panel__hint action-panel__hint--waiting">{hint}</p>
+        <div className="action-panel__header">
+          <p className="action-panel__hint" title={hint}>{hint}</p>
           {roundBadge}
         </div>
       </section>
@@ -173,12 +183,9 @@ export function ActionPanel({
   }
 
   return (
-    <section className="action-panel">
+    <section className="action-panel" aria-label={canInteract ? '轮到你了' : '牌局提示'}>
       <div className="action-panel__header">
-        <div>
-          <p className="action-panel__seat">{canInteract ? '轮到你了' : seatState.config.name}</p>
-          <p className="action-panel__hint" aria-live="polite">{hint}</p>
-        </div>
+        <p className="action-panel__hint" aria-live="polite" title={hint}>{hint}</p>
         {canOrganizeHand ? (
           <button
             type="button"
@@ -193,18 +200,6 @@ export function ActionPanel({
         <button type="button" className="action-panel__help" onClick={onHelp} aria-label="查看规则与当前提示">规则</button>
         {roundBadge}
       </div>
-
-      <CardStrip
-        cards={handCards}
-        cardDefinitions={cardDefinitions}
-        hand
-        spread
-        selectedCardIds={selectedCardIds}
-        onCardClick={canInteract ? onCardToggle : undefined}
-        draggable={canInteract}
-        organizing={isOrganizingHand}
-        onCardReorder={onHandReorder}
-      />
 
       <div className="action-panel__actions">
         {visibleActionButtons.length > 0 ? (

@@ -1,0 +1,489 @@
+/*
+ * 首页：三维木桌静物做背景，品牌、玩家信息和开局入口叠在上面。
+ */
+.app-shell {
+  background: #0b0705;
+}
+
+.lobby {
+  --lobby-ink: #f3e9d2;
+  --lobby-muted: #e0c48e;
+  --lobby-line: rgba(232, 205, 150, 0.42);
+  --lobby-panel: rgba(16, 9, 5, 0.6);
+  --lobby-red: #b8322a;
+  position: relative;
+  width: min(100vw, 480px);
+  height: 100svh;
+  overflow: hidden;
+  isolation: isolate;
+  color: var(--lobby-ink);
+  background: #0b0705;
+}
+
+.lobby__backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+
+.lobby__backdrop canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/*
+ * 只在最上和最下压一点暗，其余画面留给三维场景；标题靠吊灯的光晕衬托，不再用黑底盖住。
+ */
+.lobby__shade {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background:
+    linear-gradient(180deg, rgba(8, 5, 3, 0.7) 0%, rgba(8, 5, 3, 0) 20%),
+    linear-gradient(0deg, rgba(8, 5, 3, 0.9) 0%, rgba(8, 5, 3, 0) 34%);
+}
+
+.lobby__home {
+  position: relative;
+  z-index: 2;
+  height: 100%;
+  box-sizing: border-box;
+  padding: calc(14px + env(safe-area-inset-top)) 14px calc(12px + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+}
+
+.lobby__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.lobby__player {
+  min-width: 0;
+  min-height: 44px;
+  border: 1px solid var(--lobby-line);
+  border-radius: 24px;
+  padding: 4px 14px 4px 5px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--lobby-panel);
+}
+
+.lobby__avatar {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: #fff6e6;
+  font-weight: 800;
+  box-shadow: inset 0 -8px 12px rgba(0, 0, 0, 0.4);
+}
+
+.lobby__player-name {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 0.92rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lobby__player-score {
+  flex: 0 0 auto;
+  color: var(--lobby-muted);
+  font-size: 0.84rem;
+}
+
+.lobby__tools {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 8px;
+}
+
+.lobby__ghost {
+  min-width: 56px;
+  min-height: 44px;
+  border: 1px solid var(--lobby-line);
+  border-radius: 22px;
+  padding: 0 14px;
+  color: var(--lobby-ink);
+  font-size: 0.88rem;
+  /*
+   * 按钮文字不换行、不被旁边的长文案挤窄。
+   */
+  flex: 0 0 auto;
+  white-space: nowrap;
+  background: var(--lobby-panel);
+}
+
+.lobby__ghost:disabled {
+  opacity: 0.45;
+}
+
+/*
+ * 品牌居中放在吊灯正下方：标志在上，大字标题在下，像一块挂在灯下的招牌。
+ */
+.lobby__brand {
+  margin-top: 18px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+}
+
+.lobby__brand svg {
+  flex: 0 0 auto;
+  filter: drop-shadow(0 8px 14px rgba(0, 0, 0, 0.6));
+}
+
+.lobby__brand h1 {
+  margin: 0;
+  font-family: 'Songti SC', 'STSong', 'Noto Serif CJK SC', 'Source Han Serif SC', serif;
+  font-size: clamp(3.4rem, 17vw, 4.6rem);
+  font-weight: 900;
+  line-height: 1.05;
+  letter-spacing: 0.14em;
+  /*
+   * 字间距加在每个字右侧，整体会偏左，用等量的左内边距补回来才真正居中。
+   */
+  padding-left: 0.14em;
+  color: #fff3d6;
+  text-shadow:
+    0 2px 0 #7a2a12,
+    0 5px 0 rgba(0, 0, 0, 0.55),
+    0 0 34px rgba(255, 190, 110, 0.55);
+}
+
+.lobby__brand p {
+  margin: 0;
+  border-top: 1px solid rgba(232, 205, 150, 0.5);
+  border-bottom: 1px solid rgba(232, 205, 150, 0.5);
+  padding: 3px 12px;
+  color: #f0d9a6;
+  font-size: 0.8rem;
+  letter-spacing: 0.26em;
+  text-shadow: 0 1px 3px #000;
+}
+
+/*
+ * 屏幕较矮时（横向偏宽的窗口、小屏手机）收起标志并缩小标题，避免标题压到中间那排牌上。
+ */
+@media (max-height: 760px) {
+  .lobby__brand {
+    margin-top: 4px;
+    gap: 2px;
+  }
+
+  .lobby__brand svg {
+    display: none;
+  }
+
+  .lobby__brand h1 {
+    font-size: 2.7rem;
+  }
+}
+
+/*
+ * 底部操作区是一块半透明的毛玻璃托盘，透出后面的桌面和牌，和场景融在一起。
+ */
+.lobby__actions {
+  margin-top: auto;
+  border: 1px solid rgba(232, 205, 150, 0.32);
+  border-radius: 26px;
+  padding: 14px 14px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  background: rgba(20, 11, 6, 0.58);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 236, 200, 0.16),
+    0 18px 40px rgba(0, 0, 0, 0.55);
+  -webkit-backdrop-filter: blur(12px) saturate(1.2);
+  backdrop-filter: blur(12px) saturate(1.2);
+}
+
+.lobby__difficulty {
+  margin: 0;
+  border: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.lobby__difficulty legend {
+  margin-bottom: 6px;
+  padding: 0;
+  color: var(--lobby-muted);
+  font-size: 0.78rem;
+  letter-spacing: 0.1em;
+}
+
+.lobby__level {
+  position: relative;
+  min-height: 52px;
+  border: 1px solid var(--lobby-line);
+  border-radius: 14px;
+  padding: 6px 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  background: var(--lobby-panel);
+}
+
+.lobby__level input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+}
+
+.lobby__level strong {
+  font-size: 0.95rem;
+}
+
+.lobby__level span {
+  color: var(--lobby-muted);
+  font-size: 0.7rem;
+}
+
+.lobby__level--active {
+  border-color: #ffd98a;
+  color: #2a1408;
+  background: linear-gradient(180deg, #ffe7a8, #e0b24c);
+}
+
+.lobby__level--active span {
+  color: #5a3a12;
+}
+
+/*
+ * 键盘操作时选中项要有可见的焦点框。
+ */
+.lobby__level:has(input:focus-visible) {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+
+.lobby__primary {
+  min-height: 60px;
+  border: 0;
+  border-radius: 16px;
+  padding: 0 18px;
+  color: #fff6e6;
+  font-family: 'Songti SC', 'STSong', 'Noto Serif CJK SC', 'Source Han Serif SC', serif;
+  font-size: 1.4rem;
+  font-weight: 800;
+  letter-spacing: 0.3em;
+  background: linear-gradient(180deg, #cf4034, #a3261f);
+  box-shadow:
+    0 4px 0 #6f1712,
+    0 12px 20px rgba(0, 0, 0, 0.5);
+}
+
+.lobby__primary:active {
+  transform: translateY(2px);
+  box-shadow:
+    0 2px 0 #6f1712,
+    0 8px 14px rgba(0, 0, 0, 0.5);
+}
+
+.lobby__secondary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.lobby__entry {
+  min-height: 58px;
+  border: 1px solid var(--lobby-line);
+  border-radius: 16px;
+  padding: 6px 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  color: var(--lobby-ink);
+  font-size: 1.04rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  background: var(--lobby-panel);
+}
+
+.lobby__entry span {
+  color: var(--lobby-muted);
+  font-size: 0.72rem;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+}
+
+.lobby__error {
+  margin: 0;
+  border-radius: 10px;
+  padding: 8px 12px;
+  color: #ffe1dc;
+  font-size: 0.84rem;
+  background: rgba(150, 30, 24, 0.82);
+}
+
+.lobby__disclaimer {
+  margin: 0;
+  color: #cdb992;
+  font-size: 0.66rem;
+  line-height: 1.5;
+  text-align: center;
+}
+
+/*
+ * 规则与定制牌局使用不透明的暖纸色底，隔开首页静物背景，保证黑色牌框与文字清晰。
+ */
+.lobby__sheet {
+  position: relative;
+  z-index: 2;
+  height: 100%;
+  box-sizing: border-box;
+  padding: calc(14px + env(safe-area-inset-top)) 14px calc(14px + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  color: #352c21;
+  background: #e9dfcb;
+}
+
+/*
+ * 没有牌局数据时的过渡提示，例如联机牌局正在同步。
+ */
+.lobby__notice {
+  position: relative;
+  z-index: 2;
+  margin: 0;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  color: var(--lobby-muted);
+}
+
+.hand-picker {
+  --lobby-ink: #352c21;
+  --lobby-muted: #6c5a40;
+  --lobby-line: #b49c76;
+  gap: 12px;
+}
+
+.hand-picker__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.hand-picker__head h2 {
+  margin: 0;
+  font-size: 1.3rem;
+}
+
+.hand-picker__head p {
+  margin: 4px 0 0;
+  color: var(--lobby-muted);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.hand-picker .lobby__ghost {
+  color: #514026;
+  background: #f7f0e0;
+  box-shadow: none;
+}
+
+.hand-picker__grid {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 8px 4px;
+  justify-items: center;
+}
+
+.hand-picker__card {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  border-radius: 3px;
+  padding: 5px 4px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  box-shadow: none;
+  transition: transform 160ms ease;
+}
+
+/*
+ * 牌直接展示在页面底色上；小屏下覆盖组件固定尺寸，保持高瘦比例并完整容纳八列。
+ */
+.hand-picker__card .pai-card {
+  width: 100% !important;
+  max-width: 37px;
+  height: auto !important;
+  aspect-ratio: 84 / 200;
+  filter: drop-shadow(0 3px 2px rgba(51, 36, 17, 0.28));
+}
+
+.hand-picker__card .pai-card__core {
+  stroke: #8d806b;
+  stroke-width: 1.2;
+}
+
+.hand-picker__card:focus-visible {
+  outline: 2px solid #ad3c31;
+  outline-offset: 2px;
+}
+
+.hand-picker__card--selected {
+  transform: translateY(-3px);
+}
+
+/*
+ * 选中态只标记牌本身和角上的勾选标志，不再增加承托底框。
+ */
+.hand-picker__card--selected .pai-card__core {
+  stroke: #ad3c31;
+  stroke-width: 3;
+}
+
+.hand-picker__card--selected::after {
+  content: '✓';
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 15px;
+  height: 15px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #fff9e9;
+  background: #ad3c31;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.hand-picker__actions {
+  margin-top: auto;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+}
+
+.hand-picker__actions .lobby__primary {
+  font-size: 1.05rem;
+  letter-spacing: 0.08em;
+}

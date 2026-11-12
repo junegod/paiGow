@@ -1,0 +1,114 @@
+/*
+ * 首页与局内帮助共用暖纸色规则面板，正文使用深色文字，示例牌放在浅色承托区域。
+ * 样式限定在规则面板内部，不改变三维牌桌的黑牌材质。
+ */
+.rules-panel {
+  color: #352c21;
+  background: #e9dfcb;
+  border-radius: 0;
+}
+
+.rules-panel__head {
+  background: #e9dfcb;
+  border-bottom: 1px solid #c4b18e;
+}
+
+.rules-panel__head p {
+  color: #806140;
+}
+
+.rules-panel__head h2 {
+  color: #352c21;
+}
+
+.rules-panel__head button {
+  border: 0;
+  color: #66553f;
+  background: transparent;
+  box-shadow: none;
+}
+
+/*
+ * 章节以留白和细分隔线组织，避免与示例区域叠成多层圆角边框。
+ */
+.rules-section {
+  padding: 14px 0;
+  border: 0;
+  border-bottom: 1px solid #d2c4aa;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.rules-section:last-child {
+  border-bottom: 0;
+}
+
+.rules-section h3 {
+  color: #514026;
+}
+
+.rules-section > p,
+.rules-footnote,
+.rules-note-list p,
+.rules-example p,
+.rules-door-line p {
+  color: #66553f;
+}
+
+.rules-door-line,
+.rules-example {
+  border: 0;
+  border-radius: 6px;
+  background: #e1d4ba;
+}
+
+.rules-door-line strong,
+.rules-example strong,
+.rules-score-grid strong,
+.rules-catch-formula strong {
+  color: #493820;
+}
+
+.rules-card-row {
+  gap: 7px;
+  padding: 4px 0;
+}
+
+/*
+ * 提高黑牌直边的对比度，保留牌体黑色和原始牌点，暗牌示例同样能看清外轮廓。
+ */
+.rules-panel .pai-card__core {
+  stroke: #897a61;
+  stroke-width: 1.2;
+}
+
+.rules-panel .pai-card__bevel {
+  stroke: rgba(255, 255, 255, 0.24);
+}
+
+.rules-panel .pai-card {
+  filter: drop-shadow(0 3px 2px rgba(51, 36, 17, 0.28));
+}
+
+.rules-pill-grid span,
+.rules-score-grid span,
+.rules-catch-formula span {
+  color: #514026;
+  background: #dfcfaf;
+}
+
+.rules-score-grid em,
+.rules-catch-formula em {
+  color: #746044;
+}
+
+.rules-note-list p {
+  border-left-color: #9d7b41;
+  background: #eee4d0;
+}
+
+.rules-catch-formula {
+  border-color: #c7b591;
+  background: #eee4d0;
+}
