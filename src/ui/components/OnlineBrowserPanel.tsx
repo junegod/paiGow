@@ -45,7 +45,10 @@ function ConnectionState({ status }: { status: OnlineClientStatus }) {
 }
 
 /**
- * 联机大厅：集中处理昵称、创建房间和房间发现，避免这些流程继续堆在 App 组件中。
+ * 联机大厅：集中处理昵称、创建房间和房间发现，按服务端占座情况开放加入。
+ *
+ * @param props 房间摘要、连接状态与大厅操作。
+ * @returns 联机大厅及当前可加入的房间。
  */
 export function OnlineBrowserPanel({
   connectionStatus,
@@ -59,6 +62,16 @@ export function OnlineBrowserPanel({
   onBack,
 }: OnlineBrowserPanelProps) {
   const connected = connectionStatus === 'connected'
+  const entries = rooms.map((room) => {
+    // 单独更新前端时旧服务仍只提供在线人数；收到新摘要后使用包含保留座位的占用数。
+    const occupiedCount = room.occupiedCount ?? room.onlineCount
+    return {
+      room,
+      full: occupiedCount >= room.maxCount,
+      reservedCount: Math.max(0, occupiedCount - room.onlineCount),
+    }
+  })
+  const joinableCount = entries.filter(({ full }) => !full).length
 
   return (
     <main className="app-shell online-shell">
@@ -105,41 +118,38 @@ export function OnlineBrowserPanel({
                 <h2 id="online-room-list-title">开放房间</h2>
                 <p>只展示尚未开局且仍有真人在线的房间。</p>
               </div>
-              <span>{rooms.length} 个可加入</span>
+              <span>{joinableCount} 个可加入</span>
             </div>
 
             <div className="online-room-list" aria-live="polite">
-              {rooms.map((room) => {
-                const full = room.onlineCount >= room.maxCount
-
-                return (
-                  <article key={room.roomCode} className="online-room-row">
-                    <div className="online-room-row__avatar" aria-hidden="true">
-                      {room.hostName.slice(0, 1)}
-                    </div>
-                    <div className="online-room-row__owner">
-                      <strong>{room.hostName} 的房间</strong>
-                      <span>等待朋友加入</span>
-                    </div>
-                    <div className="online-room-row__code">
-                      <span>房间码</span>
-                      <strong>{room.roomCode}</strong>
-                    </div>
-                    <div className="online-room-row__count">
-                      <span>在线人数</span>
-                      <strong>{room.onlineCount}/{room.maxCount}</strong>
-                    </div>
-                    <button
-                      type="button"
-                      className="online-row-action"
-                      disabled={!connected || full}
-                      onClick={() => onJoinRoom(room.roomCode)}
-                    >
-                      {full ? '已满' : '加入'}
-                    </button>
-                  </article>
-                )
-              })}
+              {entries.map(({ room, full, reservedCount }) => (
+                <article key={room.roomCode} className="online-room-row">
+                  <div className="online-room-row__avatar" aria-hidden="true">
+                    {room.hostName.slice(0, 1)}
+                  </div>
+                  <div className="online-room-row__owner">
+                    <strong>{room.hostName} 的房间</strong>
+                    <span>等待朋友加入</span>
+                  </div>
+                  <div className="online-room-row__code">
+                    <span>房间码</span>
+                    <strong>{room.roomCode}</strong>
+                  </div>
+                  <div className="online-room-row__count">
+                    <span>在线人数</span>
+                    <strong>{room.onlineCount}/{room.maxCount}</strong>
+                    {reservedCount > 0 ? <span>{reservedCount} 个保留座位</span> : null}
+                  </div>
+                  <button
+                    type="button"
+                    className="online-row-action"
+                    disabled={!connected || full}
+                    onClick={() => onJoinRoom(room.roomCode)}
+                  >
+                    {full ? '已满' : '加入'}
+                  </button>
+                </article>
+              ))}
 
               {rooms.length === 0 ? (
                 <div className="online-room-empty">

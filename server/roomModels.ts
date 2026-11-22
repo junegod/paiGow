@@ -39,6 +39,19 @@ export const ROOM_IDLE_TTL_MS = 6 * 60 * 60 * 1000
 /** 断线玩家保留原座位的时间。 */
 export const DISCONNECT_RETENTION_MS = 3 * 60 * 1000
 
+/**
+ * 判断断线座位是否已超过保留期限，供大厅统计和实际座位清理共用。
+ *
+ * @param player 真人座位及其当前连接状态。
+ * @param now 本次判断使用的服务端时间戳。
+ * @returns 已过期且可释放该座位时返回 true。
+ */
+export function isDisconnectedSeatExpired(player: RoomPlayer, now: number): boolean {
+  return !player.online &&
+    player.disconnectedAt !== null &&
+    now - player.disconnectedAt >= DISCONNECT_RETENTION_MS
+}
+
 /** 对纯 JSON 房间状态做兼容 Node 16 的深拷贝。 */
 function cloneJsonValue<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T
@@ -160,13 +173,22 @@ export function createMatchStateMessageForSeat(room: OnlineRoom, viewerSeat: Sea
   }
 }
 
-/** 生成联机大厅使用的公开房间摘要。 */
-export function createOnlineRoomSummary(room: OnlineRoom): OnlineRoomSummary {
+/**
+ * 生成联机大厅使用的公开房间摘要，仅暴露在线人数和占座数量。
+ *
+ * @param room 等待开局的房间。
+ * @param now 本次列表请求的服务端时间戳，与加入时使用相同的保留规则。
+ * @returns 大厅用于展示和判断是否可加入的房间摘要。
+ */
+export function createOnlineRoomSummary(room: OnlineRoom, now: number): OnlineRoomSummary {
+  const players = [...room.players.values()]
   return {
     roomCode: room.roomCode,
     hostName: room.players.get(room.hostSeat)?.name ?? '房主',
-    onlineCount: [...room.players.values()].filter((player) => player.online).length,
-    maxCount: 4,
+    onlineCount: players.filter((player) => player.online).length,
+    // 加入请求会先释放已过期的座位，列表不必等到后台维护才显示空位。
+    occupiedCount: players.filter((player) => !isDisconnectedSeatExpired(player, now)).length,
+    maxCount: room.match.seatConfigs.length,
     isPlaying: room.isPlaying,
     createdAt: room.createdAt,
   }

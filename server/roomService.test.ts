@@ -5,6 +5,7 @@ import { jiAnDaSuoZiRuleSet } from '@/rules-variants/ji-an-da-suo-zi/ruleSet'
 import { ONLINE_PROTOCOL_VERSION } from '@/services/online/types'
 import type { OnlineClientPayload, OnlineServerMessage } from '@/services/online/types'
 
+import { DISCONNECT_RETENTION_MS } from './roomModels'
 import { OnlineRoomService, type RoomSocket } from './roomService'
 
 /** 测试用假连接，只记录服务端实际发送过的消息。 */
@@ -287,5 +288,73 @@ describe('OnlineRoomService', () => {
 
     expect(refreshed.room.players.some((player) => player.seat === joined.player.seat)).toBe(false)
     expect(refreshed.room.seatConfigs[joined.player.seat].mode).toBe('bot')
+  })
+
+  it('房主在原连接请求恢复快照时不迁移房主，也不广播断线或重连', () => {
+    const host = createFakeSocket()
+    const guest = createFakeSocket()
+    const created = request(service, host, { type: 'create-room', playerName: '原房主' }).toSelf
+    if (created.type !== 'room-created') {
+      throw new Error('测试房间创建失败。')
+    }
+
+    request(service, guest, { type: 'join-room', roomCode: created.roomCode, playerName: '来客' })
+    const before = findLatestMessage(host, 'room-state')
+    guest.messages.length = 0
+
+    const resumed = request(service, host, {
+      type: 'resume-room',
+      roomCode: created.roomCode,
+      playerToken: created.player.token,
+    }).toSelf
+
+    expect(resumed).toMatchObject({
+      type: 'room-resumed',
+      player: { seat: created.player.seat, token: created.player.token },
+      room: { hostSeat: created.player.seat, revision: before.room.revision },
+    })
+    expect(guest.messages).toEqual([])
+    expect(request(service, host, {
+      type: 'start-match',
+      playerToken: created.player.token,
+    }).toSelf.type).toBe('room-state')
+  })
+
+  it('大厅占座数包含未过期的断线玩家，保留期限到达后即可加入', () => {
+    vi.useFakeTimers()
+    const host = createFakeSocket()
+    const guests = Array.from({ length: 3 }, createFakeSocket)
+    const observer = createFakeSocket()
+    const created = request(service, host, { type: 'create-room', playerName: '房主' }).toSelf
+    if (created.type !== 'room-created') {
+      throw new Error('测试房间创建失败。')
+    }
+
+    for (const guest of guests) {
+      expect(request(service, guest, {
+        type: 'join-room', roomCode: created.roomCode, playerName: '测试来客',
+      }).toSelf.type).toBe('room-joined')
+    }
+    service.handleDisconnect(guests[2])
+    const disconnectedAt = Date.now()
+
+    // 直接调整时钟，确保到期前后都由请求本身判断，避免依赖每分钟维护任务。
+    vi.setSystemTime(disconnectedAt + DISCONNECT_RETENTION_MS - 1)
+    expect(request(service, observer, { type: 'list-rooms' }).toSelf).toMatchObject({
+      type: 'room-list',
+      rooms: [{ roomCode: created.roomCode, onlineCount: 3, occupiedCount: 4, maxCount: 4 }],
+    })
+    expect(request(service, observer, {
+      type: 'join-room', roomCode: created.roomCode, playerName: '等候来客',
+    }).toSelf).toMatchObject({ type: 'error', code: 'room-full' })
+
+    vi.setSystemTime(disconnectedAt + DISCONNECT_RETENTION_MS)
+    expect(request(service, observer, { type: 'list-rooms' }).toSelf).toMatchObject({
+      type: 'room-list',
+      rooms: [{ roomCode: created.roomCode, onlineCount: 3, occupiedCount: 3, maxCount: 4 }],
+    })
+    expect(request(service, observer, {
+      type: 'join-room', roomCode: created.roomCode, playerName: '等候来客',
+    }).toSelf).toMatchObject({ type: 'room-joined', player: { seat: 3 } })
   })
 })

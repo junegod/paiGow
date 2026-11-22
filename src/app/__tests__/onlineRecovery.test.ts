@@ -13,7 +13,17 @@ describe('联机恢复快照门禁', () => {
     FakeWebSocket.instances = []
     localStorage.clear()
   })
-  afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals() })
+  afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.useRealTimers(); vi.unstubAllGlobals() })
+
+  /**
+   * 触发浏览器切换前后台事件，测试走实际页面监听入口。
+   *
+   * @param visibility 事件触发时的页面可见状态。
+   */
+  function changePageVisibility(visibility: DocumentVisibilityState): void {
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue(visibility)
+    document.dispatchEvent(new Event('visibilitychange'))
+  }
 
   it('传输层重连成功但尚未收到身份快照时保持锁定，确认恢复后才放行', async () => {
     const api = new MockMatchApi(42)
@@ -36,7 +46,31 @@ describe('联机恢复快照门禁', () => {
     const session = result.current.session!
     expect(result.current.isSynchronized).toBe(true)
 
-    await act(async () => { first.close(); vi.advanceTimersByTime(600) })
+    // 后台不探测；回到前台时用原连接核对权限，多次切回也只保留一个请求。
+    await act(async () => {
+      changePageVisibility('hidden')
+      expect(first.sent.some((payload) => JSON.parse(payload).type === 'resume-room')).toBe(false)
+      changePageVisibility('visible')
+      changePageVisibility('visible')
+    })
+    expect(FakeWebSocket.instances).toHaveLength(1)
+    expect(first.readyState).toBe(FakeWebSocket.OPEN)
+    expect(result.current.connectionStatus).toBe('connected')
+    expect(result.current.isSynchronized).toBe(false)
+    expect(first.sent.filter((payload) => JSON.parse(payload).type === 'resume-room')).toHaveLength(1)
+
+    await act(async () => {
+      first.receive({ type: 'room-resumed', roomCode: session.roomCode, player, room, state })
+    })
+    expect(result.current.isSynchronized).toBe(true)
+    expect(result.current.isHost).toBe(true)
+
+    // 第二次切回时模拟半开：连接看似在线却收不到快照，等到期限才关闭原连接。
+    await act(async () => { changePageVisibility('visible'); vi.advanceTimersByTime(9_999) })
+    expect(first.readyState).toBe(FakeWebSocket.OPEN)
+    expect(result.current.isSynchronized).toBe(false)
+    await act(async () => { vi.advanceTimersByTime(601) })
+    expect(result.current.connectionStatus).toBe('connecting')
     let next = FakeWebSocket.instances[1]
     await act(async () => { next.open(); next.receive({ type: 'pong' }) })
     expect(result.current.connectionStatus).toBe('connected')

@@ -65,6 +65,10 @@ export interface OnlineRoomSummary {
   hostName: string
   /** 当前在线真人数量，断线三分钟内的玩家不算在线。 */
   onlineCount: number
+  /**
+   * 已占用的真人座位数，包含仍在保留期的断线座位；旧版服务端可能不返回。
+   */
+  occupiedCount?: number
   /** 真人座位上限，当前固定为 4。 */
   maxCount: number
   /** 是否已经开局；开局的房间不在大厅列表展示。 */

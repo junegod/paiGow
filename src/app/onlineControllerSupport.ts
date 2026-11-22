@@ -1,5 +1,4 @@
-import type { CardInstance, MatchState } from '@/rules-core/types'
-import type { OnlineRoomState, OnlineServerMessage } from '@/services/online/types'
+import type { CardInstance } from '@/rules-core/types'
 
 /** 大厅等待开始时的机器人默认名字。 */
 export const DEFAULT_BOT_NAMES = ['村里的阿明', '村里的老周', '村里的细妹']
@@ -53,35 +52,4 @@ export function createWebSocketUrl(): string {
 
   const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
   return `${protocol}//${location.host}/ws`
-}
-
-/**
- * 从服务端消息提取完整房间和牌局快照。
- *
- * @param message 服务端消息。
- * @returns 能提取时返回快照，否则返回 null。
- */
-export function readRoomSnapshot(message: OnlineServerMessage): {
-  room: OnlineRoomState
-  state: MatchState
-} | null {
-  if (
-    message.type === 'room-created' ||
-    message.type === 'room-joined' ||
-    message.type === 'room-resumed'
-  ) {
-    return {
-      room: message.room,
-      state: message.state,
-    }
-  }
-
-  if (message.type === 'room-state') {
-    return {
-      room: message.room,
-      state: message.state,
-    }
-  }
-
-  return null
 }

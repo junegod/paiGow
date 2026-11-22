@@ -29,7 +29,9 @@ export function useOnlineReadiness(client: OnlineClient) {
     setIsReady(false)
   }, [clearTimer])
 
-  /** 发起身份恢复时锁定操作；没有收到确认快照则重建连接后重试。 */
+  /**
+   * 前台核对座位或重连恢复时锁定操作，只有快照超时才重建连接。
+   */
   const begin = useCallback(() => {
     reset()
     timerRef.current = window.setTimeout(() => client.reconnect(), SNAPSHOT_TIMEOUT_MS)

@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 
 import type { SeatId } from '@/rules-core/types'
 
-import { DISCONNECT_RETENTION_MS } from './roomModels'
+import { isDisconnectedSeatExpired } from './roomModels'
 import type { OnlineRoom, RoomPlayer, RoomSocket } from './roomModels'
 
 /** 更新房间活跃时间并递增状态版本。 */
@@ -97,14 +97,13 @@ export function findPlayerBySocket(
 /**
  * 清理断线超过三分钟的玩家，并把座位永久转成机器人。
  *
+ * @param room 需要维护的房间。
+ * @param now 本次清理使用的服务端时间戳。
  * @returns 是否发生了清理。
  */
 export function expireDisconnectedPlayers(room: OnlineRoom, now: number): boolean {
-  const expiredPlayers = [...room.players.values()].filter((player) =>
-    !player.online &&
-    player.disconnectedAt !== null &&
-    now - player.disconnectedAt >= DISCONNECT_RETENTION_MS,
-  )
+  // 与大厅统计共用到期判断，确保显示的空位可以被加入请求收回。
+  const expiredPlayers = [...room.players.values()].filter((player) => isDisconnectedSeatExpired(player, now))
   if (expiredPlayers.length === 0) {
     return false
   }

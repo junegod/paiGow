@@ -569,6 +569,7 @@ function App() {
         playerSeat={online.player.seat}
         isHost={online.isHost}
         connectionStatus={online.connectionStatus}
+        isSynchronized={online.isSynchronized}
         notice={online.notice}
         error={online.error}
         botNames={online.botNames}

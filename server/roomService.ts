@@ -125,9 +125,10 @@ export class OnlineRoomService {
    * @returns 大厅房间列表消息。
    */
   public listWaitingRooms(): OnlineServerMessage {
+    const now = Date.now()
     const summaries = [...this.rooms.values()]
       .filter((room) => !room.isPlaying && [...room.players.values()].some((player) => player.online))
-      .map(createOnlineRoomSummary)
+      .map((room) => createOnlineRoomSummary(room, now))
       .sort((left, right) => right.createdAt - left.createdAt)
 
     return {
@@ -298,8 +299,8 @@ export class OnlineRoomService {
 
     expireDisconnectedPlayers(room, Date.now())
 
-    const emptySeat = ([0, 1, 2, 3] as const)
-      .find((seat) => !room.players.has(seat))
+    // 使用该房间的座位配置与大厅容量口径一致；保留期内的真人仍占用原座位。
+    const emptySeat = room.match.seatConfigs.find(({ seat }) => !room.players.has(seat))?.seat
 
     if (emptySeat === undefined) {
       return { response: this.createError('room-full', '房间已经满员。') }
@@ -348,27 +349,32 @@ export class OnlineRoomService {
       return { response: this.createError('seat-token-invalid', '房间已结束，请重新创建或加入。') }
     }
 
+    const previousSocket = player.socket
     const wasOffline = !player.online
 
-    if (player.socket !== socket && player.socket.readyState === 1) {
-      player.socket.close(4001, '账号已在新的连接恢复')
+    // 同一条健康连接只读最新快照，避免切回前台反复推迟已经排定的机器人动作。
+    if (wasOffline || previousSocket !== socket) {
+      player.socket = socket
+      player.online = true
+      player.disconnectedAt = null
+      touchRoom(room)
+
+      // 先绑定新连接，旧连接的关闭事件不得把刚恢复的玩家再次标记为断线。
+      if (previousSocket !== socket && previousSocket.readyState === 1) {
+        previousSocket.close(4001, '账号已在新的连接恢复')
+      }
+
+      if (wasOffline) {
+        this.broadcast(room, {
+          type: 'player-reconnected',
+          seat: player.seat,
+          name: player.name,
+        })
+        this.broadcastRoomStatePerSeat(room)
+      }
+
+      this.botScheduler.schedule(room)
     }
-
-    player.socket = socket
-    player.online = true
-    player.disconnectedAt = null
-    touchRoom(room)
-
-    if (wasOffline) {
-      this.broadcast(room, {
-        type: 'player-reconnected',
-        seat: player.seat,
-        name: player.name,
-      })
-      this.broadcastRoomStatePerSeat(room)
-    }
-
-    this.botScheduler.schedule(room)
 
     return {
       room,

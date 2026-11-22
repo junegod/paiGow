@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 
 import { OnlineClient, type OnlineClientStatus } from '@/services/online/OnlineClient'
-import { DEFAULT_BOT_NAMES, orderHandBySavedIds, createWebSocketUrl, readRoomSnapshot, type OnlineMode } from '@/app/onlineControllerSupport'
+import { DEFAULT_BOT_NAMES, orderHandBySavedIds, createWebSocketUrl, type OnlineMode } from '@/app/onlineControllerSupport'
 import { createMatchStateForViewer } from '@/services/online/viewerState'
 import { hasOnlineConsent, useOnlineConsent } from '@/app/useOnlineConsent'
 import { useOnlineReadiness } from '@/app/useOnlineReadiness'
@@ -44,7 +44,6 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
   const consent = useOnlineConsent()
   const [client] = useState(() => new OnlineClient(createWebSocketUrl()))
   const readiness = useOnlineReadiness(client)
-  const resetReadiness = readiness.reset
   const [mode, setMode] = useState<OnlineMode>('offline')
   const [roomList, setRoomList] = useState<OnlineRoomSummary[]>([])
   const [isRoomListLoading, setIsRoomListLoading] = useState(false)
@@ -151,20 +150,20 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
    * @param message 服务端消息。
    */
   const handleServerMessage = useEffectEvent((message: OnlineServerMessage) => {
-    if (message.type === 'room-resumed' && message.player.token !== resumingTokenRef.current) {
-      return
-    }
-    const roomSnapshot = readRoomSnapshot(message)
-
-    if (roomSnapshot) {
-      applyRoomSnapshot(roomSnapshot)
-    }
-
     if (
       message.type === 'room-created' ||
       message.type === 'room-joined' ||
       message.type === 'room-resumed'
     ) {
+      // 只接受当前请求的身份快照，避免主动离开后被迟到的响应拉回旧房间。
+      if (message.type === 'room-resumed' && message.player.token !== resumingTokenRef.current) {
+        return
+      }
+      if (!acceptServerRevision(message.roomCode, message.room.revision)) {
+        return
+      }
+
+      resumingTokenRef.current = null
       const nextSession: OnlineSessionSnapshot = {
         roomCode: message.roomCode,
         playerToken: message.player.token,
@@ -173,12 +172,20 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
       }
       setPlayer(message.player)
       setSession(nextSession)
-      saveOnlineSession(nextSession)
+      setRoom(message.room)
+      // 前台探测经常发生，原座位凭证没有变化时无需重复写入本地存储。
+      if (message.type !== 'room-resumed' || !player) {
+        saveOnlineSession(nextSession)
+      }
       setError(null)
       readiness.finish()
       applyViewerState(message.state, message.player.seat)
       setMode(message.state.currentRound && message.room.isPlaying ? 'match' : 'lobby')
       return
+    }
+
+    if (message.type === 'room-state') {
+      applyRoomSnapshot(message)
     }
 
     if (message.type === 'match-state') {
@@ -208,6 +215,7 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
       setError(message.message)
 
       if (message.code === 'seat-token-invalid' || message.code === 'protocol-mismatch') {
+        resumingTokenRef.current = null
         readiness.reset()
         clearOnlineSession()
         setSession(null)
@@ -227,7 +235,25 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
   })
 
   /**
+   * 在当前连接上核对座位身份并拉取权威快照，期间暂停牌局操作。
+   *
+   * @param savedSession 当前房间的本机座位凭证。
+   */
+  const synchronizeSession = useEffectEvent((savedSession: OnlineSessionSnapshot) => {
+    // 前后台反复切换时保留正在等待的请求和期限，半开连接不能靠切换无限延长等待。
+    if (resumingTokenRef.current === savedSession.playerToken) {
+      return
+    }
+
+    resumingTokenRef.current = savedSession.playerToken
+    readiness.begin()
+    client.resumeRoom(savedSession)
+  })
+
+  /**
    * 连接恢复后自动恢复已保存座位。
+   *
+   * @param status 当前传输层状态。
    */
   const handleConnectionStatus = useEffectEvent((status: OnlineClientStatus) => {
     setConnectionStatus(status)
@@ -235,9 +261,7 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
     readiness.reset()
     resumingTokenRef.current = null
     if (status === 'connected' && session) {
-      readiness.begin()
-      resumingTokenRef.current = session.playerToken
-      client.resumeRoom(session)
+      synchronizeSession(session)
     }
   })
 
@@ -286,23 +310,32 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
   }, [client, mode])
 
   /**
-   * 移动端切后台后连接可能处于半开状态；回到页面时重新握手恢复身份与牌局。
+   * 回到前台后用现有连接验证快照；断开时由连接状态回调恢复座位。
    */
+  const refreshAfterVisible = useEffectEvent(() => {
+    if (document.visibilityState !== 'visible') {
+      return
+    }
+
+    if (session && client.status === 'connected') {
+      // 健康连接上的恢复请求不会触发房主迁移；半开连接收不到快照时才重连。
+      synchronizeSession(session)
+    } else if (mode === 'browser') {
+      client.requestRoomList()
+    }
+  })
+
   useEffect(() => {
-    function refreshAfterVisible(): void {
-      if (document.visibilityState === 'visible' && player) {
-        // 前台恢复时重新握手并获取身份快照，不能仅向可能半开的旧连接发送查询。
-        resetReadiness()
-        client.reconnect()
-      }
+    /**
+     * 仅将页面可见性事件转交给联机控制器，避免随房间状态反复注册。
+     */
+    function handleVisibilityChange(): void {
+      refreshAfterVisible()
     }
 
-    document.addEventListener('visibilitychange', refreshAfterVisible)
-
-    return () => {
-      document.removeEventListener('visibilitychange', refreshAfterVisible)
-    }
-  }, [client, player, resetReadiness])
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
+  }, [])
 
   /** 恢复连接和房主变更只短暂提示，避免通知长时间占据牌桌。 */
   useEffect(() => {

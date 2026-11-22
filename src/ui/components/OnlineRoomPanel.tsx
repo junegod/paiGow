@@ -13,6 +13,10 @@ interface OnlineRoomPanelProps {
   isHost: boolean
   /** WebSocket 连接状态。 */
   connectionStatus: OnlineClientStatus
+  /**
+   * 当前连接已核对身份并拿到最新房间快照。
+   */
+  isSynchronized: boolean
   /** 房间内短通知。 */
   notice: string | null
   /** 当前错误。 */
@@ -29,12 +33,16 @@ interface OnlineRoomPanelProps {
 
 /**
  * 等待房间界面：以四方桌布局表达座位、房主、真人和断线状态。
+ *
+ * @param props 当前座位视角、连接就绪情况和等待房间操作。
+ * @returns 包含房间状态和房主操作的等待界面。
  */
 export function OnlineRoomPanel({
   room,
   playerSeat,
   isHost,
   connectionStatus,
+  isSynchronized,
   notice,
   error,
   botNames,
@@ -45,6 +53,8 @@ export function OnlineRoomPanel({
   const [draftBotNames, setDraftBotNames] = useState(botNames)
   const [copied, setCopied] = useState(false)
   const connected = connectionStatus === 'connected'
+  // 快照校验期间仍可离开房间，只有依赖房主身份的操作需要等待。
+  const canManageRoom = connected && isSynchronized
 
   useEffect(() => {
     setDraftBotNames(botNames)
@@ -89,7 +99,7 @@ export function OnlineRoomPanel({
           <strong className="online-brand-title">打索子</strong>
           <span className={`online-connection online-connection--${connectionStatus}`}>
             <span aria-hidden="true" />
-            {connected ? '已连接' : '正在重连'}
+            {canManageRoom ? '已连接' : connected ? '正在同步' : '正在重连'}
           </span>
         </header>
 
@@ -149,7 +159,7 @@ export function OnlineRoomPanel({
                   />
                 </label>
               ))}
-              <button type="button" onClick={() => onSaveBotNames(draftBotNames)}>
+              <button type="button" disabled={!canManageRoom} onClick={() => onSaveBotNames(draftBotNames)}>
                 保存名字
               </button>
             </div>
@@ -160,7 +170,7 @@ export function OnlineRoomPanel({
               <button
                 type="button"
                 className="online-primary-button"
-                disabled={!connected}
+                disabled={!canManageRoom}
                 onClick={onStartMatch}
               >
                 开始牌局
