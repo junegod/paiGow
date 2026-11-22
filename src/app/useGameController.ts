@@ -139,8 +139,8 @@ export function useGameController(botDifficulty: BotDifficulty, skipOpeningCerem
     reviewTrickKey === latestPublicTrickKey &&
     !currentRound.currentTrick,
   )
-  const diceReviewRoll = useDiceReview(matchState)
-  const isDiceReviewing = diceReviewRoll !== null
+  const { review: diceReview, finishReview: finishDiceReview } = useDiceReview(matchState)
+  const isDiceReviewing = diceReview !== null
   const currentSeat = currentRound?.currentSeat ?? null
   const currentSeatState =
     currentRound && currentSeat !== null
@@ -588,7 +588,9 @@ export function useGameController(botDifficulty: BotDifficulty, skipOpeningCerem
     isOpeningCeremonyActive: Boolean(openingCeremony),
     isTrickReviewing,
     isDiceReviewing,
-    diceReviewRoll,
+    diceReviewRoll: diceReview?.roll ?? null,
+    diceReviewPhase: diceReview?.phase ?? null,
+    finishDiceReview,
     selectionPreview,
     selectedCardIds,
     isHandOrganizing,

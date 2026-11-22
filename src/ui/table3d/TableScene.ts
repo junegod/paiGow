@@ -41,6 +41,10 @@ export interface TableSceneCallbacks {
    */
   onBowlPick: () => void
   /**
+   * 局内掷骰的骰碗已回到桌面并完成渲染，可以展示已收到的出牌。
+   */
+  onDiceDocked: () => void
+  /**
    * 收牌代表牌实际落稳；只回报碰撞类型，音频开关和播放由界面层统一处理。
    */
   onTileLand: (kind: TileLandingKind) => void
@@ -187,6 +191,10 @@ export class TableScene {
   private readonly entityByObject = new WeakMap<THREE.Object3D, TileEntity>()
   private readonly dice = new DiceAnimator()
   /**
+   * 本次回桌需要回报落位；开局仪式中骰碗的移动不触发这个回调。
+   */
+  private notifyDiceDocked = false
+  /**
    * 维护拖动中的固定牌槽和即时牌序，避免把邻牌动画位置当成排序依据。
    */
   private readonly handDrag = new HandDragController()
@@ -307,11 +315,12 @@ export class TableScene {
    *
    * 开始掷骰时把碗端到镜头前并让骰子翻滚，结束后放回桌上；点数始终以传入的结果为准。
    *
-   * @param state 骰子点数、是否处于掷骰展示阶段、是否暂时挪到桌边
+   * @param state 骰子点数及骰碗展示、回桌或避让的位置状态。
    * @returns 无返回值
    */
   setDice(state: DiceState): void {
     this.dice.setState(state)
+    this.notifyDiceDocked = state.returning
     this.requestRender()
   }
 
@@ -788,12 +797,17 @@ export class TableScene {
    */
   private readonly renderFrame = (time: number): void => {
     this.frameHandle = null
-    let animating = this.dice.advance(time)
-    animating = this.advanceOrbit() || animating
+    const diceMoving = this.dice.advance(time)
+    let animating = this.advanceOrbit() || diceMoving
     for (const entity of this.tiles.values()) {
       animating = advanceTileMotion(entity, time, this.callbacks.onTileLand) || animating
     }
     this.renderer.render(this.scene, this.camera)
+    // 先画出落桌这一帧，再解锁出牌，避免慢帧时仅凭计时器就提前切换牌面。
+    if (this.notifyDiceDocked && !diceMoving) {
+      this.notifyDiceDocked = false
+      this.callbacks.onDiceDocked()
+    }
     if (animating) {
       this.requestRender()
     }

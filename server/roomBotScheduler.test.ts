@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { SeededRandom } from '@/rules-core/random'
 import { jiAnDaSuoZiRuleSet } from '@/rules-variants/ji-an-da-suo-zi/ruleSet'
-import { DICE_TOTAL_DISPLAY_MS } from '@/shared/diceTiming'
+import { DICE_BOWL_TRAVEL_MS, DICE_SHOWCASE_MS } from '@/shared/diceTiming'
 
 import { RoomBotScheduler } from './roomBotScheduler'
 import { createDefaultSeatConfigs, type OnlineRoom } from './roomModels'
@@ -39,7 +39,7 @@ function createRoomAwaitingDiceChoice(): OnlineRoom {
 describe('联机机器人掷骰调度', () => {
   afterEach(() => vi.useRealTimers())
 
-  it('完整展示点数后才定门出牌，临近到期重新排程也沿用原期限', () => {
+  it('点数展示和骰碗回桌后才定门出牌，临近到期重新排程也沿用原期限', () => {
     vi.useFakeTimers()
     const room = createRoomAwaitingDiceChoice()
     const onMatchChanged = vi.fn()
@@ -48,7 +48,9 @@ describe('联机机器人掷骰调度', () => {
     expect(pendingDice).toBeTruthy()
 
     scheduler.schedule(room)
-    vi.advanceTimersByTime(DICE_TOTAL_DISPLAY_MS - 100)
+    vi.advanceTimersByTime(DICE_SHOWCASE_MS)
+    expect(onMatchChanged).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(DICE_BOWL_TRAVEL_MS - 100)
     expect(room.match.currentRound?.pendingDice).toBe(pendingDice)
     expect(onMatchChanged).not.toHaveBeenCalled()
 

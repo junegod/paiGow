@@ -11,6 +11,16 @@ export const DICE_ROLL_ANIMATION_MS = 1760
 export const DICE_RESULT_HOLD_MS = 2000
 
 /**
- * 掷骰后整段展示锁定时长：滚动动画 + 落定停留。
+ * 骰碗端起或放回桌面各自的移动时长。端起和骰子翻滚同时开始。
  */
-export const DICE_TOTAL_DISPLAY_MS = DICE_ROLL_ANIMATION_MS + DICE_RESULT_HOLD_MS
+export const DICE_BOWL_TRAVEL_MS = 420
+
+/**
+ * 骰碗在镜头前的展示时长，包含骰子翻滚和点数停留。
+ */
+export const DICE_SHOWCASE_MS = DICE_ROLL_ANIMATION_MS + DICE_RESULT_HOLD_MS
+
+/**
+ * 服务端掷骰后暂停推进的时长，包含骰碗放回桌面的过程。
+ */
+export const DICE_TOTAL_DISPLAY_MS = DICE_SHOWCASE_MS + DICE_BOWL_TRAVEL_MS

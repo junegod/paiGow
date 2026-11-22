@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 
-import { DICE_ROLL_ANIMATION_MS } from '@/shared/diceTiming'
+import { DICE_BOWL_TRAVEL_MS, DICE_ROLL_ANIMATION_MS } from '@/shared/diceTiming'
 import { createDiceRig, DIE_REST_POSITIONS, orientDieForValue, type DiceRig } from '@/ui/table3d/diceFactory'
 import { BOWL_ASIDE, BOWL_DOCK, BOWL_SHOWCASE, type Point3 } from '@/ui/table3d/tableMetrics'
 
@@ -17,15 +17,14 @@ export interface DiceState {
    */
   rolling: boolean
   /**
+   * 局内点数展示结束，骰碗正在回桌；画布落位后需要向控制器回报。
+   */
+  returning: boolean
+  /**
    * 骰碗是否暂时挪到桌边。开局洗牌垒墩要用桌子中央，这期间碗放在一旁。
    */
   aside: boolean
 }
-
-/**
- * 骰碗在两个位置之间移动一次的时长（毫秒）。
- */
-const BOWL_TRAVEL_MS = 420
 
 /**
  * 骰碗放在桌上时的缩放。端到镜头前时恢复原始大小，放回桌上时缩小，少占桌面。
@@ -160,7 +159,7 @@ export class DiceAnimator {
    * @returns 骰碗或骰子是否仍在运动，场景据此决定是否继续渲染
    */
   advance(time: number): boolean {
-    const travel = Math.min((time - this.moveStart) / BOWL_TRAVEL_MS, 1)
+    const travel = Math.min((time - this.moveStart) / DICE_BOWL_TRAVEL_MS, 1)
     const eased = 1 - (1 - travel) ** 3
     this.rig.group.position.lerpVectors(this.moveFrom, this.moveTarget, eased)
     this.rig.group.scale.setScalar(THREE.MathUtils.lerp(this.scaleFrom, this.scaleTarget, eased))

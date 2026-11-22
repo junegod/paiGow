@@ -202,7 +202,9 @@ function App() {
     : activeController.isOpeningCeremonyActive
       ? '正在洗牌抓牌，抓完后只亮你的手牌。'
     : activeController.isDiceReviewing
-      ? '骰子正在滚动并展示结果，稍等一下看清点数。'
+      ? activeController.diceReviewPhase === 'returning'
+        ? '骰碗正在放回桌面，稍后继续出牌。'
+        : '骰子正在滚动并展示结果，稍等一下看清点数。'
     : rollActionForBowl
       ? '点桌上的骰碗掷骰。'
     : canUseActionPanel
@@ -292,7 +294,8 @@ function App() {
     : bowlDisplayRoll
   const shownRollFirst = shownRoll?.first ?? null
   const shownRollSecond = shownRoll?.second ?? null
-  const isDiceRolling = openingCeremony.stage ? openingCeremony.isRollingDice : activeController.isDiceReviewing
+  const isDiceRolling = openingCeremony.stage ? openingCeremony.isRollingDice : activeController.diceReviewPhase === 'showcase'
+  const isDiceReturning = !openingCeremony.stage && activeController.diceReviewPhase === 'returning'
   /*
    * 开局仪式要用桌子中央洗牌垒墩，这期间骰碗放在桌边。
    */
@@ -303,9 +306,10 @@ function App() {
         ? ([shownRollFirst, shownRollSecond] as [number, number])
         : null,
       rolling: isDiceRolling,
+      returning: isDiceReturning,
       aside: isCeremonyRunning,
     }),
-    [isCeremonyRunning, isDiceRolling, shownRollFirst, shownRollSecond],
+    [isCeremonyRunning, isDiceReturning, isDiceRolling, shownRollFirst, shownRollSecond],
   )
   const bowlLabel = openingCeremony.stage
     ? null
@@ -639,6 +643,7 @@ function App() {
           onInspectTrick={(trickIndex) => setDrawerState({ type: 'trick', trickIndex })}
           onInspectSeat={(seat) => setDrawerState({ type: 'seat', seat })}
           onHandTop={setHandTopOffset}
+          onDiceDocked={activeController.finishDiceReview}
           onRollDice={() => {
             /*
              * 只有规则层给出了掷骰动作、且不在掷骰展示期间，点碗才会真正掷骰。

@@ -2,8 +2,10 @@ import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useOnlineController } from '@/app/useOnlineController'
+import { arrangeJiAnDaSuoZiHandIds } from '@/rules-variants/ji-an-da-suo-zi/handArrangement'
 import { MockMatchApi } from '@/services/mock-match-api/MockMatchApi'
 import type { OnlineRoomState } from '@/services/online/types'
+import { DICE_SHOWCASE_MS } from '@/shared/diceTiming'
 import { FakeWebSocket } from '@/test/FakeWebSocket'
 
 describe('联机恢复快照门禁', () => {
@@ -106,7 +108,7 @@ describe('联机恢复快照门禁', () => {
     expect(result.current.isSynchronized).toBe(false)
   })
 
-  it('前台恢复快照紧跟实时掷骰到达时，保留动画并暂缓下一步', async () => {
+  it('前台恢复快照紧跟实时掷骰到达时，保留动画并等骰碗落桌再展示出牌', async () => {
     const state = new MockMatchApi(42).startRound()
     const player = { seat: 0 as const, token: 'dice-test-token', name: '掷骰玩家' }
     const room: OnlineRoomState = {
@@ -122,6 +124,7 @@ describe('联机恢复快照门禁', () => {
       socket.receive({ type: 'pong' })
       socket.receive({ type: 'room-created', roomCode: room.roomCode, player, room, state })
     })
+    await act(async () => { result.current.controller.finishOpeningCeremony() })
     await act(async () => { changePageVisibility('visible') })
 
     const rolled = structuredClone(state)
@@ -145,5 +148,80 @@ describe('联机恢复快照门禁', () => {
       })
     })
     expect(socket.sent).toHaveLength(before)
+
+    const advanced = structuredClone(rolled)
+    const advancedRound = advanced.currentRound!
+    advancedRound.pendingDice = null
+    const played = advancedRound.seats[0].hand.pop()!
+    // 模拟旧服务端先收到的出牌快照，桌面牌和己方牌数都要等落桌才切换。
+    await act(async () => {
+      socket.receive({ type: 'match-state', roomCode: room.roomCode, revision: 3, state: advanced })
+    })
+    await act(async () => { vi.advanceTimersByTime(DICE_SHOWCASE_MS) })
+    expect(result.current.controller.diceReviewPhase).toBe('returning')
+    expect(result.current.controller.currentRound?.pendingDice?.roll).toEqual(roll)
+    expect(result.current.controller.currentHandCards.some((card) => card.id === played.id)).toBe(true)
+
+    await act(async () => { result.current.controller.finishDiceReview() })
+    expect(result.current.controller.isDiceReviewing).toBe(false)
+    expect(result.current.controller.currentRound?.pendingDice).toBeNull()
+    expect(result.current.controller.currentHandCards.some((card) => card.id === played.id)).toBe(false)
+  })
+
+  it('非房主翻牌后自动整理本方手牌，重连保留手动牌序，下一局重新整理', async () => {
+    const api = new MockMatchApi(42)
+    const state = api.startRound()
+    const player = { seat: 2 as const, token: 'hand-test-token', name: '客人' }
+    const room: OnlineRoomState = {
+      roomCode: '123456', seatConfigs: state.seatConfigs, onlineSeats: [0, 2], isPlaying: true,
+      hostSeat: 0, revision: 1, players: [{ ...player, online: true, isHost: false }],
+    }
+    const { result } = renderHook(() => useOnlineController('客人'))
+    /**
+     * 读取底部展示顺序，用于区分严格的手牌顺序与只保留牌集合。
+     *
+     * @returns 当前玩家的界面手牌标识顺序。
+     */
+    function displayedIds(): string[] {
+      return result.current.controller.currentHandCards.map((card) => card.id)
+    }
+
+    await act(async () => { result.current.enterBrowser() })
+    await act(async () => { result.current.consent.accept() })
+    const socket = FakeWebSocket.instances[0]
+    await act(async () => {
+      socket.open()
+      socket.receive({ type: 'pong' })
+      socket.receive({ type: 'room-joined', roomCode: room.roomCode, player, room, state })
+    })
+    const hand = state.currentRound!.seats[player.seat].hand
+    const sorted = arrangeJiAnDaSuoZiHandIds(hand)
+    expect(displayedIds()).toEqual(hand.map((card) => card.id))
+    expect(displayedIds()).not.toEqual(sorted)
+    await act(async () => { result.current.controller.finishOpeningCeremony() })
+    expect(displayedIds()).toEqual(sorted)
+    expect(result.current.controller.isHandOrganizing).toBe(true)
+
+    const manual = [...sorted].reverse()
+    await act(async () => { result.current.controller.reorderCurrentHand(manual) })
+    await act(async () => { changePageVisibility('visible') })
+    await act(async () => {
+      socket.receive({ type: 'room-resumed', roomCode: room.roomCode, player, room, state })
+    })
+    expect(result.current.controller.isOpeningCeremonyActive).toBe(false)
+    expect(displayedIds()).toEqual(manual)
+
+    const next = structuredClone(state)
+    const nextRound = next.currentRound!
+    nextRound.roundNumber += 1
+    // 保留同一批牌实例 ID 来模拟跨局重发，确认上一局的手动排序不会覆盖抓牌顺序。
+    nextRound.seats[player.seat].hand.reverse()
+    await act(async () => {
+      socket.receive({ type: 'room-state', room: { ...room, revision: 2 }, state: next })
+    })
+    expect(result.current.controller.isOpeningCeremonyActive).toBe(true)
+    expect(displayedIds()).toEqual(nextRound.seats[player.seat].hand.map((card) => card.id))
+    await act(async () => { result.current.controller.finishOpeningCeremony() })
+    expect(displayedIds()).toEqual(arrangeJiAnDaSuoZiHandIds(nextRound.seats[player.seat].hand))
   })
 })

@@ -110,6 +110,10 @@ interface Table3DProps {
    * 点了骰碗。是否真的掷骰由上层按规则决定。
    */
   onRollDice: () => void
+  /**
+   * 骰碗回桌帧渲染完成，通知控制器结束本次掷骰展示。
+   */
+  onDiceDocked: () => void
 }
 
 /**
@@ -174,6 +178,7 @@ export function Table3D(props: Table3DProps) {
         onHandReorder: (cardIds) => latestProps.current.onHandReorder(cardIds),
         onHandTop: (distance) => latestProps.current.onHandTop(distance),
         onBowlPick: () => latestProps.current.onRollDice(),
+        onDiceDocked: () => latestProps.current.onDiceDocked(),
         // 声音跟随真实落位回调，仍经统一播放器校验音效开关、总音量和移动端解锁状态。
         onTileLand: (kind) => playGameSound(kind === 'stack' ? 'cardStack' : 'pileDrop'),
       })
@@ -219,8 +224,13 @@ export function Table3D(props: Table3DProps) {
   }, [props.bottomInset])
 
   useEffect(() => {
+    // 无法创建画布时不会有落位帧，展示计时结束即可解除操作锁定。
+    if (unsupported && dice.returning) {
+      latestProps.current.onDiceDocked()
+      return
+    }
     sceneRef.current?.setDice(dice)
-  }, [dice])
+  }, [dice, unsupported])
 
   const hasBowlLabel = props.bowlLabel !== null
   useEffect(() => {

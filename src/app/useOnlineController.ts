@@ -60,8 +60,6 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
    * 记录实时推送中见过的掷骰标识，避免紧接着到达的房间快照覆盖实时来源。
    */
   const [liveDiceReviewKey, setLiveDiceReviewKey] = useState<string | null>(null)
-  const diceReviewRoll = useDiceReview(matchState, liveDiceReviewKey === getPendingDiceReviewKey(matchState))
-  const isDiceReviewing = diceReviewRoll !== null
   const [selectedCardIds, setSelectedCardIds] = useState<string[]>([])
   /**
    * 联机本地手牌顺序：座位号 -> 牌实例 ID 数组。
@@ -71,7 +69,14 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
   const [isHandOrganizing, setIsHandOrganizing] = useState(false)
   const organizeAnimationTimerRef = useRef<number | null>(null)
   const [isOpeningCeremonyVisible, setIsOpeningCeremonyVisible] = useState(false)
-  const lastSeenRoundNumberRef = useRef(0)
+  /**
+   * 记录已经开始展示的牌局和局号；同局的恢复快照不能重新播放仪式或重置手牌顺序。
+   */
+  const lastSeenRoundRef = useRef<string | null>(null)
+  const { review: diceReview, finishReview: finishDiceReview } = useDiceReview(
+    matchState, liveDiceReviewKey === getPendingDiceReviewKey(matchState), isOpeningCeremonyVisible,
+  )
+  const isDiceReviewing = diceReview !== null
 
   /**
    * 联机开局仪式快照。
@@ -116,15 +121,6 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
     // 服务端状态推进后，界面上的旧选牌必然失效；同步清空避免残留引用崩溃。
     setSelectedCardIds([])
     setMatchState(createMatchStateForViewer(nextState, viewerSeat))
-  })
-
-  /**
-   * 关闭联机开局仪式并清空快照，避免新牌局开始后继续占用旧引用。
-   */
-  const finishOpeningCeremony = useEffectEvent(() => {
-    setSelectedCardIds([])
-    setOpeningCeremony(null)
-    setIsOpeningCeremonyVisible(false)
   })
 
   /**
@@ -359,14 +355,16 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
     return () => window.clearTimeout(timer)
   }, [notice])
 
-  /** 组件卸载或离开页面时清理理牌动画计时器，避免卸载后继续写 React 状态。 */
-  useEffect(() => {
-    return () => {
-      if (organizeAnimationTimerRef.current !== null) {
-        window.clearTimeout(organizeAnimationTimerRef.current)
-      }
+  /**
+   * 取消本局理牌提示计时，避免换局或离席后旧计时器影响新手牌。
+   */
+  const clearHandOrganizeTimer = useCallback(() => {
+    if (organizeAnimationTimerRef.current !== null) {
+      window.clearTimeout(organizeAnimationTimerRef.current)
+      organizeAnimationTimerRef.current = null
     }
   }, [])
+  useEffect(() => clearHandOrganizeTimer, [clearHandOrganizeTimer])
 
   /**
    * 每个玩家在新一局开局时播放同一段仪式；断线重连不重复打断当前局。
@@ -374,22 +372,32 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
   useEffect(() => {
     const round = matchState?.currentRound
 
-    if (!round) {
+    if (!matchState || !round) {
+      lastSeenRoundRef.current = null
+      clearHandOrganizeTimer()
+      setHandOrder({})
+      setIsHandOrganizing(false)
+      setOpeningCeremony(null)
       setIsOpeningCeremonyVisible(false)
       return
     }
 
-    if (round.roundNumber <= lastSeenRoundNumberRef.current) {
+    const roundKey = `${matchState.matchId}:${round.roundNumber}`
+    if (roundKey === lastSeenRoundRef.current) {
       return
     }
 
-    lastSeenRoundNumberRef.current = round.roundNumber
+    // 牌实例 ID 每局会重复。先清空上一局的拖拽和理牌顺序，让抓牌阶段按新局发牌顺序展示。
+    lastSeenRoundRef.current = roundKey
+    clearHandOrganizeTimer()
+    setHandOrder({})
+    setIsHandOrganizing(false)
     setSelectedCardIds([])
 
     // 仪式必须使用当前玩家的座位视角，否则动画里的庄家和抓牌方向会指向别人。
     setOpeningCeremony(round)
     setIsOpeningCeremonyVisible(true)
-  }, [matchState])
+  }, [clearHandOrganizeTimer, matchState])
 
   /**
    * 允许当前真人座位选牌。
@@ -435,7 +443,8 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
   }, [matchState, player])
 
   /**
-   * 手动触发一次界面理牌反馈。
+   * 使用规则变体已有的理牌顺序，只重排当前玩家自己的可见手牌。
+   * 自动理牌和手动整理共用该入口，联机牌局和出牌规则不受显示顺序影响。
    */
   const organizeHumanHand = useCallback(() => {
     const currentRound = matchState?.currentRound
@@ -457,15 +466,27 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
     }))
     setIsHandOrganizing(true)
 
-    if (organizeAnimationTimerRef.current !== null) {
-      window.clearTimeout(organizeAnimationTimerRef.current)
-    }
-
+    clearHandOrganizeTimer()
     organizeAnimationTimerRef.current = window.setTimeout(() => {
       setIsHandOrganizing(false)
       organizeAnimationTimerRef.current = null
     }, 900)
-  }, [matchState, player])
+  }, [clearHandOrganizeTimer, matchState, player])
+
+  /**
+   * 翻牌完成或主动跳过开局仪式时，用最新的本方手牌自动整理一次，再开放牌桌操作。
+   */
+  const finishOpeningCeremony = useEffectEvent(() => {
+    if (!openingCeremony || openingCeremony.roundNumber !== matchState?.currentRound?.roundNumber) {
+      return
+    }
+
+    // 播放仪式时服务端仍在同步牌局，只整理当前快照里的牌，避免把已经打出的牌排回手上。
+    organizeHumanHand()
+    setSelectedCardIds([])
+    setOpeningCeremony(null)
+    setIsOpeningCeremonyVisible(false)
+  })
 
   /**
    * 进入联机大厅页面。首次进入时立即拉取一次房间列表，之后由轮询定时刷新。
@@ -587,17 +608,14 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
     }
 
     clearOnlineSession()
-    finishOpeningCeremony()
     setPlayer(null)
     setSession(null)
     setRoom(null)
     setMatchState(null)
     setLiveDiceReviewKey(null)
     setSelectedCardIds([])
-    setHandOrder({})
     activeRoomCodeRef.current = null
     latestRevisionRef.current = 0
-    lastSeenRoundNumberRef.current = 0
     setMode(targetMode)
     // 明确回到单机后停止心跳；回联机大厅时保留连接供房间列表使用。
     if (targetMode === 'offline') client.disconnect()
@@ -637,7 +655,9 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
    * 派生成现有牌桌 UI 能直接使用的控制器形态。
    */
   const controller = useMemo(() => {
-    const currentRound = matchState?.currentRound ?? null
+    // 较旧的服务端或较慢的画布可能先收到出牌；桌面、手牌和音效统一等骰碗落桌再切到最新快照。
+    const visibleMatchState = diceReview?.matchState ?? matchState
+    const currentRound = visibleMatchState?.currentRound ?? null
     const currentSeat = currentRound?.currentSeat ?? null
     const currentSeatState = currentRound && currentSeat !== null
       ? currentRound.seats.find((seatState) => seatState.seat === currentSeat) ?? null
@@ -663,7 +683,7 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
     const visibleHandCards = humanHandCards
 
     return {
-      matchState,
+      matchState: visibleMatchState,
       currentRound,
       currentSeat,
       currentSeatState,
@@ -682,7 +702,9 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
       isOpeningCeremonyActive: isOpeningCeremonyVisible,
       isTrickReviewing: false,
       isDiceReviewing,
-      diceReviewRoll,
+      diceReviewRoll: diceReview?.roll ?? null,
+      diceReviewPhase: diceReview?.phase ?? null,
+      finishDiceReview,
       /*
        * 选牌预览必须基于"自己的座位"而不是"当前出牌座位"。
        * 否则别人出牌时，自己点牌会被 previewSelection 判成"不是你的回合"而没有任何按钮。
@@ -707,7 +729,7 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
       restartMatch: startMatch,
       finishOpeningCeremony: finishOpeningCeremony,
     }
-  }, [diceReviewRoll, handOrder, openingCeremony, isDiceReviewing, isHandOrganizing, isOpeningCeremonyVisible, matchState, player, selectedCardIds, startMatch, submitViewerAction, toggleCardSelection, reorderCurrentHand, organizeHumanHand])
+  }, [diceReview, finishDiceReview, handOrder, openingCeremony, isDiceReviewing, isHandOrganizing, isOpeningCeremonyVisible, matchState, player, selectedCardIds, startMatch, submitViewerAction, toggleCardSelection, reorderCurrentHand, organizeHumanHand])
 
   return {
     consent,
