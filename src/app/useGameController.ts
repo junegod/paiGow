@@ -11,7 +11,7 @@ import { MockMatchApi } from '@/services/mock-match-api/MockMatchApi'
 import { DEFAULT_SEAT_CONFIGS } from '@/rules-variants/ji-an-da-suo-zi/cardCatalog'
 import { RULE_ENGINE_REVISION } from '@/rules-variants/ji-an-da-suo-zi/engine'
 import { arrangeJiAnDaSuoZiHandIds } from '@/rules-variants/ji-an-da-suo-zi/handArrangement'
-import { DICE_TOTAL_DISPLAY_MS } from '@/ui/diceTiming'
+import { useDiceReview } from '@/app/useDiceReview'
 import type {
   BotDifficulty,
   CardInstance,
@@ -113,10 +113,8 @@ export function useGameController(botDifficulty: BotDifficulty, skipOpeningCerem
   const [handOrderBySeat, setHandOrderBySeat] = useState<Partial<Record<SeatId, string[]>>>({})
   const [isHandOrganizing, setIsHandOrganizing] = useState(false)
   const [reviewTrick, setReviewTrick] = useState<TrickRecord | null>(null)
-  const [diceReviewKey, setDiceReviewKey] = useState<string | null>(null)
   const [openingCeremony, setOpeningCeremony] = useState<OpeningCeremonyState | null>(null)
   const reviewTimerRef = useRef<number | null>(null)
-  const diceReviewTimerRef = useRef<number | null>(null)
   const handOrganizeTimerRef = useRef<number | null>(null)
   const handOrganizeAnimationTimerRef = useRef<number | null>(null)
   const lastReviewTrickKeyRef = useRef<string | null>(null)
@@ -135,26 +133,14 @@ export function useGameController(botDifficulty: BotDifficulty, skipOpeningCerem
     currentRound && latestPublicTrick
       ? `${currentRound.roundNumber}:${latestPublicTrick.trickIndex}`
       : null
-  const pendingDiceReviewKey = currentRound?.pendingDice
-    ? [
-        currentRound.roundNumber,
-        currentRound.pendingDice.seat,
-        publicTrickLogLength,
-        currentRound.pendingDice.roll.first,
-        currentRound.pendingDice.roll.second,
-        currentRound.pendingDice.roll.key,
-      ].join(':')
-    : null
   const isTrickReviewing = Boolean(
     reviewTrick &&
     currentRound &&
     reviewTrickKey === latestPublicTrickKey &&
     !currentRound.currentTrick,
   )
-  const isDiceReviewing = Boolean(
-    pendingDiceReviewKey &&
-    diceReviewKey === pendingDiceReviewKey,
-  )
+  const diceReviewRoll = useDiceReview(matchState)
+  const isDiceReviewing = diceReviewRoll !== null
   const currentSeat = currentRound?.currentSeat ?? null
   const currentSeatState =
     currentRound && currentSeat !== null
@@ -346,38 +332,6 @@ export function useGameController(botDifficulty: BotDifficulty, skipOpeningCerem
   ])
 
   useEffect(() => {
-    if (!pendingDiceReviewKey) {
-      if (diceReviewTimerRef.current !== null) {
-        window.clearTimeout(diceReviewTimerRef.current)
-        diceReviewTimerRef.current = null
-      }
-
-      setDiceReviewKey(null)
-      return
-    }
-
-    setDiceReviewKey(pendingDiceReviewKey)
-
-    if (diceReviewTimerRef.current !== null) {
-      window.clearTimeout(diceReviewTimerRef.current)
-    }
-
-    diceReviewTimerRef.current = window.setTimeout(() => {
-      setDiceReviewKey((previousKey) =>
-        previousKey === pendingDiceReviewKey ? null : previousKey,
-      )
-      diceReviewTimerRef.current = null
-    }, DICE_TOTAL_DISPLAY_MS)
-
-    return () => {
-      if (diceReviewTimerRef.current !== null) {
-        window.clearTimeout(diceReviewTimerRef.current)
-        diceReviewTimerRef.current = null
-      }
-    }
-  }, [pendingDiceReviewKey])
-
-  useEffect(() => {
     if (currentRound?.phase !== 'awaiting-reveal') {
       return
     }
@@ -409,10 +363,6 @@ export function useGameController(botDifficulty: BotDifficulty, skipOpeningCerem
     return () => {
       if (reviewTimerRef.current !== null) {
         window.clearTimeout(reviewTimerRef.current)
-      }
-
-      if (diceReviewTimerRef.current !== null) {
-        window.clearTimeout(diceReviewTimerRef.current)
       }
 
       clearHandOrganizeTimers()
@@ -573,12 +523,7 @@ export function useGameController(botDifficulty: BotDifficulty, skipOpeningCerem
     setIsHandOrganizing(false)
     setHandOrderBySeat({})
     setReviewTrick(null)
-    setDiceReviewKey(null)
     lastReviewTrickKeyRef.current = null
-    if (diceReviewTimerRef.current !== null) {
-      window.clearTimeout(diceReviewTimerRef.current)
-      diceReviewTimerRef.current = null
-    }
     const nextState = apiRef.current.startRound(options)
     const nextRound = nextState.currentRound
     const humanSeatSnapshot = nextRound?.seats.find((seatState) =>
@@ -610,12 +555,7 @@ export function useGameController(botDifficulty: BotDifficulty, skipOpeningCerem
     setIsHandOrganizing(false)
     setHandOrderBySeat({})
     setReviewTrick(null)
-    setDiceReviewKey(null)
     lastReviewTrickKeyRef.current = null
-    if (diceReviewTimerRef.current !== null) {
-      window.clearTimeout(diceReviewTimerRef.current)
-      diceReviewTimerRef.current = null
-    }
     setOpeningCeremony(null)
     syncState(apiRef.current.createMatch())
   }
@@ -648,6 +588,7 @@ export function useGameController(botDifficulty: BotDifficulty, skipOpeningCerem
     isOpeningCeremonyActive: Boolean(openingCeremony),
     isTrickReviewing,
     isDiceReviewing,
+    diceReviewRoll,
     selectionPreview,
     selectedCardIds,
     isHandOrganizing,

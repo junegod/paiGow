@@ -5,6 +5,7 @@ import { DEFAULT_BOT_NAMES, orderHandBySavedIds, createWebSocketUrl, type Online
 import { createMatchStateForViewer } from '@/services/online/viewerState'
 import { hasOnlineConsent, useOnlineConsent } from '@/app/useOnlineConsent'
 import { useOnlineReadiness } from '@/app/useOnlineReadiness'
+import { getPendingDiceReviewKey, useDiceReview } from '@/app/useDiceReview'
 
 import { arrangeJiAnDaSuoZiHandIds } from '@/rules-variants/ji-an-da-suo-zi/handArrangement'
 import { jiAnDaSuoZiRuleSet } from '@/rules-variants/ji-an-da-suo-zi/ruleSet'
@@ -55,6 +56,12 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [matchState, setMatchState] = useState<MatchState | null>(null)
+  /**
+   * 记录实时推送中见过的掷骰标识，避免紧接着到达的房间快照覆盖实时来源。
+   */
+  const [liveDiceReviewKey, setLiveDiceReviewKey] = useState<string | null>(null)
+  const diceReviewRoll = useDiceReview(matchState, liveDiceReviewKey === getPendingDiceReviewKey(matchState))
+  const isDiceReviewing = diceReviewRoll !== null
   const [selectedCardIds, setSelectedCardIds] = useState<string[]>([])
   /**
    * 联机本地手牌顺序：座位号 -> 牌实例 ID 数组。
@@ -99,8 +106,13 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
    *
    * @param nextState 服务端状态。
    * @param viewerSeat 当前玩家座位。
+   * @param isLive 是否由实时动作推进，决定是否播放刚发生的掷骰。
    */
-  const applyViewerState = useEffectEvent((nextState: MatchState, viewerSeat: SeatId) => {
+  const applyViewerState = useEffectEvent((nextState: MatchState, viewerSeat: SeatId, isLive = false) => {
+    // 切回前台时恢复快照可能与实时动作一起渲染。保留同次掷骰的实时来源，单独恢复时则不播旧动画。
+    if (isLive) {
+      setLiveDiceReviewKey(getPendingDiceReviewKey(nextState))
+    }
     // 服务端状态推进后，界面上的旧选牌必然失效；同步清空避免残留引用崩溃。
     setSelectedCardIds([])
     setMatchState(createMatchStateForViewer(nextState, viewerSeat))
@@ -191,7 +203,7 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
     if (message.type === 'match-state') {
       if (player && acceptServerRevision(message.roomCode, message.revision)) {
         setError(null)
-        applyViewerState(message.state, player.seat)
+        applyViewerState(message.state, player.seat, true)
       }
       return
     }
@@ -222,6 +234,7 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
         setPlayer(null)
         setRoom(null)
         setMatchState(null)
+        setLiveDiceReviewKey(null)
         setMode('offline')
         activeRoomCodeRef.current = null
         latestRevisionRef.current = 0
@@ -579,6 +592,7 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
     setSession(null)
     setRoom(null)
     setMatchState(null)
+    setLiveDiceReviewKey(null)
     setSelectedCardIds([])
     setHandOrder({})
     activeRoomCodeRef.current = null
@@ -602,7 +616,8 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
       return
     }
 
-    if (currentSeat !== 0) {
+    // 本地动画展示完才提交下一步，避免在点数尚未看清时出牌。
+    if (currentSeat !== 0 || isDiceReviewing) {
       return
     }
 
@@ -616,7 +631,7 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
       intent: action.intent,
       selectedCardIds: action.selectedCardIds,
     })
-  }, [client, matchState, player, readiness.isReady])
+  }, [client, isDiceReviewing, matchState, player, readiness.isReady])
 
   /**
    * 派生成现有牌桌 UI 能直接使用的控制器形态。
@@ -666,7 +681,8 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
         : null,
       isOpeningCeremonyActive: isOpeningCeremonyVisible,
       isTrickReviewing: false,
-      isDiceReviewing: false,
+      isDiceReviewing,
+      diceReviewRoll,
       /*
        * 选牌预览必须基于"自己的座位"而不是"当前出牌座位"。
        * 否则别人出牌时，自己点牌会被 previewSelection 判成"不是你的回合"而没有任何按钮。
@@ -691,7 +707,7 @@ export function useOnlineController(fallbackPlayerName = '玩家') {
       restartMatch: startMatch,
       finishOpeningCeremony: finishOpeningCeremony,
     }
-  }, [handOrder, openingCeremony, isHandOrganizing, isOpeningCeremonyVisible, matchState, player, selectedCardIds, startMatch, submitViewerAction, toggleCardSelection, reorderCurrentHand, organizeHumanHand])
+  }, [diceReviewRoll, handOrder, openingCeremony, isDiceReviewing, isHandOrganizing, isOpeningCeremonyVisible, matchState, player, selectedCardIds, startMatch, submitViewerAction, toggleCardSelection, reorderCurrentHand, organizeHumanHand])
 
   return {
     consent,

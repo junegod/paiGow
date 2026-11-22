@@ -105,4 +105,45 @@ describe('联机恢复快照门禁', () => {
     expect(result.current.session).toBeNull()
     expect(result.current.isSynchronized).toBe(false)
   })
+
+  it('前台恢复快照紧跟实时掷骰到达时，保留动画并暂缓下一步', async () => {
+    const state = new MockMatchApi(42).startRound()
+    const player = { seat: 0 as const, token: 'dice-test-token', name: '掷骰玩家' }
+    const room: OnlineRoomState = {
+      roomCode: '123456', seatConfigs: state.seatConfigs, onlineSeats: [0], isPlaying: true,
+      hostSeat: 0, revision: 1, players: [{ ...player, online: true, isHost: true }],
+    }
+    const { result } = renderHook(() => useOnlineController('掷骰玩家'))
+    await act(async () => { result.current.enterBrowser() })
+    await act(async () => { result.current.consent.accept() })
+    const socket = FakeWebSocket.instances[0]
+    await act(async () => {
+      socket.open()
+      socket.receive({ type: 'pong' })
+      socket.receive({ type: 'room-created', roomCode: room.roomCode, player, room, state })
+    })
+    await act(async () => { changePageVisibility('visible') })
+
+    const rolled = structuredClone(state)
+    const round = rolled.currentRound!
+    const roll = { first: 3, second: 2, sum: 5, key: '2-3', door: 'point' } as const
+    round.currentSeat = 0
+    round.pendingDice = { seat: 0, roll, forcedDoor: roll.door, hasMatchingDoor: true }
+    // 两条消息在同一批渲染；恢复快照应确认操作身份，同时保留对应的实时掷骰。
+    await act(async () => {
+      socket.receive({ type: 'match-state', roomCode: room.roomCode, revision: 2, state: rolled })
+      socket.receive({ type: 'room-resumed', roomCode: room.roomCode, player, room: { ...room, revision: 2 }, state: rolled })
+    })
+    expect(result.current.isSynchronized).toBe(true)
+    expect(result.current.controller?.diceReviewRoll).toEqual(roll)
+
+    const before = socket.sent.length
+    await act(async () => {
+      result.current.submitViewerAction({
+        id: 'resolve', intent: 'resolve-dice-open', selectedCardIds: [round.seats[0].hand[0].id],
+        label: '出牌', description: '定门出牌', emphasis: 'primary',
+      })
+    })
+    expect(socket.sent).toHaveLength(before)
+  })
 })

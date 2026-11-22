@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 
-import { DICE_ROLL_ANIMATION_MS } from '@/ui/diceTiming'
+import { DICE_ROLL_ANIMATION_MS } from '@/shared/diceTiming'
 import { createDiceRig, DIE_REST_POSITIONS, orientDieForValue, type DiceRig } from '@/ui/table3d/diceFactory'
 import { BOWL_ASIDE, BOWL_DOCK, BOWL_SHOWCASE, type Point3 } from '@/ui/table3d/tableMetrics'
 

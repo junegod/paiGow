@@ -208,7 +208,9 @@ function App() {
     : canUseActionPanel
       ? describeTurnSelection(currentRound, activeController.selectionPreview)
       : activeController.selectionPreview.hint
+  // 保留正在翻滚的点数，快照提前进入定门出牌时也不切换骰碗内容。
   const activeDiceRoll =
+    activeController.diceReviewRoll ??
     currentRound?.pendingDice?.roll ??
     (
       currentRound?.currentTrick?.plays[0]?.pattern.source === 'dice'
